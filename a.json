@@ -1,0 +1,40 @@
+{
+    "opportunities": [
+        {
+            "type": "gear",
+            "title": "Gear Review Opportunity",
+            "description": "Haven't written about gear recently. High affiliate potential.",
+            "priority": "high",
+            "affiliateOpportunity": true
+        },
+        {
+            "type": "travel",
+            "title": "Travel Guide Opportunity",
+            "description": "Haven't written about travel recently. High affiliate potential.",
+            "priority": "high",
+            "affiliateOpportunity": true
+        },
+        {
+            "type": "tournament",
+            "title": "Australian Open - Preview Guide",
+            "description": "Tournament starts 1/18/2026. Opportunity for travel guide and gear content.",
+            "priority": "medium",
+            "affiliateOpportunity": true,
+            "data": {
+                "id": "mock-ao-2026",
+                "name": "Australian Open",
+                "start_date": "2026-01-19",
+                "end_date": "2026-02-01",
+                "location": {
+                    "city": "Melbourne",
+                    "country": "Australia"
+                },
+                "category": {
+                    "id": "atp",
+                    "name": "ATP"
+                }
+            }
+        }
+    ],
+    "message": "POST to /api/posts/generate to create a post from these opportunities"
+}

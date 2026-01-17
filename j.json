@@ -1,0 +1,264 @@
+{
+    "timestamp": "2026-01-10T23:03:25.963Z",
+    "sportradar": {
+        "allTournaments": {
+            "count": 2,
+            "tournaments": [
+                {
+                    "id": "mock-ao-2026",
+                    "name": "Australian Open",
+                    "start_date": "2026-01-19",
+                    "end_date": "2026-02-01",
+                    "location": {
+                        "city": "Melbourne",
+                        "country": "Australia"
+                    },
+                    "category": {
+                        "id": "atp",
+                        "name": "ATP"
+                    }
+                },
+                {
+                    "id": "mock-indian-wells-2026",
+                    "name": "BNP Paribas Open",
+                    "start_date": "2026-03-04",
+                    "end_date": "2026-03-16",
+                    "location": {
+                        "city": "Indian Wells",
+                        "country": "USA"
+                    },
+                    "category": {
+                        "id": "atp",
+                        "name": "ATP"
+                    }
+                }
+            ]
+        },
+        "upcomingTournaments": {
+            "count": 1,
+            "tournaments": [
+                {
+                    "id": "mock-ao-2026",
+                    "name": "Australian Open",
+                    "start_date": "2026-01-19",
+                    "end_date": "2026-02-01",
+                    "location": {
+                        "city": "Melbourne",
+                        "country": "Australia"
+                    },
+                    "category": {
+                        "id": "atp",
+                        "name": "ATP"
+                    }
+                }
+            ]
+        },
+        "currentTournaments": {
+            "count": 0,
+            "tournaments": []
+        },
+        "rankings": {
+            "count": 3,
+            "top10": [
+                {
+                    "id": "player-1",
+                    "name": "Carlos Alcaraz",
+                    "nationality": "ESP",
+                    "ranking": 1
+                },
+                {
+                    "id": "player-2",
+                    "name": "Novak Djokovic",
+                    "nationality": "SRB",
+                    "ranking": 2
+                },
+                {
+                    "id": "player-3",
+                    "name": "Jannik Sinner",
+                    "nationality": "ITA",
+                    "ranking": 3
+                }
+            ]
+        }
+    },
+    "rss": {
+        "allNews": {
+            "count": 20,
+            "items": [
+                {
+                    "title": "Sabalenka into Brisbane final for 3rd straight year",
+                    "description": "Top-ranked Aryna Sabalenka has advanced to the Brisbane International final for the third year in a row after a 6-3, 6-4 win over Karolina Muchová.",
+                    "link": "<![CDATA[https://www.espn.com/tennis/story/_/id/47565713/aryna-sabalenka-advances-brisbane-international-final]]>",
+                    "pubDate": "Sat, 10 Jan 2026 15:04:37 EST",
+                    "source": "ESPN"
+                },
+                {
+                    "title": "Bencic leads Switzerland into United Cup final",
+                    "description": "Belinda Bencic won her eighth match of the week and combined with Jakub Paul in the deciding mixed doubles to defeat Belgium's Elise Mertens and Zizou Bergs and qualify Switzerland for the United Cup final.",
+                    "link": "<![CDATA[https://www.espn.com/tennis/story/_/id/47566136/bencic-gives-switzerland-1-0-lead-belgium-united-cup-semis]]>",
+                    "pubDate": "Sat, 10 Jan 2026 11:53:08 EST",
+                    "source": "ESPN"
+                },
+                {
+                    "title": "Dominant Sabalenka reaches Brisbane final",
+                    "description": "World number one Aryna Sabalenka reaches the final of the Brisbane International for the third year in a row with victory over Karolina Muchova.",
+                    "link": "https://www.bbc.com/sport/tennis/articles/cgrdg2x78d5o?at_medium=RSS&amp;at_campaign=rss",
+                    "pubDate": "Sat, 10 Jan 2026 14:59:21 GMT",
+                    "source": "BBC Sport"
+                },
+                {
+                    "title": "Poland eliminates U.S., reaches United Cup final",
+                    "description": "Poland reached the United Cup final after Katarzyna Kawa and Jan Zielinski beat Coco Gauff and Christian Harrison 7-6 (5), 7-6 (3) in a mixed doubles decider.",
+                    "link": "<![CDATA[https://www.espn.com/tennis/story/_/id/47569287/poland-beats-us-doubles-decider-reach-united-cup-final]]>",
+                    "pubDate": "Sat, 10 Jan 2026 09:06:37 EST",
+                    "source": "ESPN"
+                },
+                {
+                    "title": "Svitolina, Wang Xinyu advance to Auckland final",
+                    "description": "Top-seeded Elina Svitolina will play in the final of the WTA Tour event in Auckland for the second time when she faces Wang Xinyu for the title.",
+                    "link": "<![CDATA[https://www.espn.com/tennis/story/_/id/47568623/elina-svitolina-wang-xinyu-meet-auckland-title]]>",
+                    "pubDate": "Sat, 10 Jan 2026 09:01:21 EST",
+                    "source": "ESPN"
+                }
+            ]
+        },
+        "recentNews": {
+            "count": 5,
+            "items": [
+                {
+                    "title": "Sabalenka into Brisbane final for 3rd straight year",
+                    "description": "Top-ranked Aryna Sabalenka has advanced to the Brisbane International final for the third year in a row after a 6-3, 6-4 win over Karolina Muchová.",
+                    "link": "<![CDATA[https://www.espn.com/tennis/story/_/id/47565713/aryna-sabalenka-advances-brisbane-international-final]]>",
+                    "pubDate": "Sat, 10 Jan 2026 15:04:37 EST",
+                    "source": "ESPN"
+                },
+                {
+                    "title": "Bencic leads Switzerland into United Cup final",
+                    "description": "Belinda Bencic won her eighth match of the week and combined with Jakub Paul in the deciding mixed doubles to defeat Belgium's Elise Mertens and Zizou Bergs and qualify Switzerland for the United Cup final.",
+                    "link": "<![CDATA[https://www.espn.com/tennis/story/_/id/47566136/bencic-gives-switzerland-1-0-lead-belgium-united-cup-semis]]>",
+                    "pubDate": "Sat, 10 Jan 2026 11:53:08 EST",
+                    "source": "ESPN"
+                },
+                {
+                    "title": "Dominant Sabalenka reaches Brisbane final",
+                    "description": "World number one Aryna Sabalenka reaches the final of the Brisbane International for the third year in a row with victory over Karolina Muchova.",
+                    "link": "https://www.bbc.com/sport/tennis/articles/cgrdg2x78d5o?at_medium=RSS&amp;at_campaign=rss",
+                    "pubDate": "Sat, 10 Jan 2026 14:59:21 GMT",
+                    "source": "BBC Sport"
+                },
+                {
+                    "title": "Poland eliminates U.S., reaches United Cup final",
+                    "description": "Poland reached the United Cup final after Katarzyna Kawa and Jan Zielinski beat Coco Gauff and Christian Harrison 7-6 (5), 7-6 (3) in a mixed doubles decider.",
+                    "link": "<![CDATA[https://www.espn.com/tennis/story/_/id/47569287/poland-beats-us-doubles-decider-reach-united-cup-final]]>",
+                    "pubDate": "Sat, 10 Jan 2026 09:06:37 EST",
+                    "source": "ESPN"
+                },
+                {
+                    "title": "Svitolina, Wang Xinyu advance to Auckland final",
+                    "description": "Top-seeded Elina Svitolina will play in the final of the WTA Tour event in Auckland for the second time when she faces Wang Xinyu for the title.",
+                    "link": "<![CDATA[https://www.espn.com/tennis/story/_/id/47568623/elina-svitolina-wang-xinyu-meet-auckland-title]]>",
+                    "pubDate": "Sat, 10 Jan 2026 09:01:21 EST",
+                    "source": "ESPN"
+                }
+            ]
+        },
+        "bySource": {
+            "espn": {
+                "count": 5,
+                "items": [
+                    {
+                        "title": "Ranking the top American players as 2026 begins",
+                        "description": "Coco Gauff won another major title in 2025, and Taylor Fritz continued to lead the American men. But who else is set to make a move in 2026?",
+                        "link": "<![CDATA[https://www.espn.com/tennis/story/_/id/47518320/american-tennis-players-rankings-2026-gauff-fritz-pegula-shelton-keys]]>",
+                        "pubDate": "Tue, 6 Jan 2026 10:24:26 EST",
+                        "source": "ESPN"
+                    },
+                    {
+                        "title": "The best players and biggest moments of 2025",
+                        "description": "As the 2025 tennis season comes to a close, we name the top players and moments of the year.",
+                        "link": "<![CDATA[https://www.espn.com/tennis/story/_/id/47052521/alcaraz-sinner-keys-sabalenka-top-tennis-players-2025]]>",
+                        "pubDate": "Mon, 24 Nov 2025 12:11:30 EST",
+                        "source": "ESPN"
+                    },
+                    {
+                        "title": "Poland eliminates U.S., reaches United Cup final",
+                        "description": "Poland reached the United Cup final after Katarzyna Kawa and Jan Zielinski beat Coco Gauff and Christian Harrison 7-6 (5), 7-6 (3) in a mixed doubles decider.",
+                        "link": "<![CDATA[https://www.espn.com/tennis/story/_/id/47569287/poland-beats-us-doubles-decider-reach-united-cup-final]]>",
+                        "pubDate": "Sat, 10 Jan 2026 09:06:37 EST",
+                        "source": "ESPN"
+                    },
+                    {
+                        "title": "Svitolina, Wang Xinyu advance to Auckland final",
+                        "description": "Top-seeded Elina Svitolina will play in the final of the WTA Tour event in Auckland for the second time when she faces Wang Xinyu for the title.",
+                        "link": "<![CDATA[https://www.espn.com/tennis/story/_/id/47568623/elina-svitolina-wang-xinyu-meet-auckland-title]]>",
+                        "pubDate": "Sat, 10 Jan 2026 09:01:21 EST",
+                        "source": "ESPN"
+                    },
+                    {
+                        "title": "Bencic leads Switzerland into United Cup final",
+                        "description": "Belinda Bencic won her eighth match of the week and combined with Jakub Paul in the deciding mixed doubles to defeat Belgium's Elise Mertens and Zizou Bergs and qualify Switzerland for the United Cup final.",
+                        "link": "<![CDATA[https://www.espn.com/tennis/story/_/id/47566136/bencic-gives-switzerland-1-0-lead-belgium-united-cup-semis]]>",
+                        "pubDate": "Sat, 10 Jan 2026 11:53:08 EST",
+                        "source": "ESPN"
+                    }
+                ]
+            },
+            "bbc": {
+                "count": 5,
+                "items": [
+                    {
+                        "title": "Dominant Sabalenka reaches Brisbane final",
+                        "description": "World number one Aryna Sabalenka reaches the final of the Brisbane International for the third year in a row with victory over Karolina Muchova.",
+                        "link": "https://www.bbc.com/sport/tennis/articles/cgrdg2x78d5o?at_medium=RSS&amp;at_campaign=rss",
+                        "pubDate": "Sat, 10 Jan 2026 14:59:21 GMT",
+                        "source": "BBC Sport"
+                    },
+                    {
+                        "title": "ITF to review wildcard entries after viral performance",
+                        "description": "The International Tennis Federation says it will review its procedures for awarding wildcards after a female player's \"unacceptable\" performance went viral on social media.",
+                        "link": "https://www.bbc.com/sport/tennis/articles/c62v5pym2emo?at_medium=RSS&amp;at_campaign=rss",
+                        "pubDate": "Fri, 09 Jan 2026 19:50:39 GMT",
+                        "source": "BBC Sport"
+                    },
+                    {
+                        "title": "Wawrinka handed Australian Open wildcard in final season",
+                        "description": "Stan Wawrinka receives an Australian Open wildcard as he begins the final season of his career, but Australian Nick Kyrgios misses out.",
+                        "link": "https://www.bbc.com/sport/tennis/articles/cz9vn0vk7djo?at_medium=RSS&amp;at_campaign=rss",
+                        "pubDate": "Fri, 09 Jan 2026 11:23:43 GMT",
+                        "source": "BBC Sport"
+                    },
+                    {
+                        "title": "Sabalenka beats Keys to reach Brisbane semi-final",
+                        "description": "World number one Aryna Sabalenka continues her Australian Open preparations by beating Madison Keys to reach the Brisbane semi-finals.",
+                        "link": "https://www.bbc.com/sport/tennis/articles/cj3vn2kvk7ro?at_medium=RSS&amp;at_campaign=rss",
+                        "pubDate": "Fri, 09 Jan 2026 09:26:33 GMT",
+                        "source": "BBC Sport"
+                    },
+                    {
+                        "title": "Players 'not protected' over 'insane' schedule - Sabalenka",
+                        "description": "World number one Aryna Sabalenka says tennis authorities \"follow their interests\" with regards to the tennis calendar and are not \"focusing on protecting all of us\".",
+                        "link": "https://www.bbc.com/sport/tennis/articles/cy8p39nypjzo?at_medium=RSS&amp;at_campaign=rss",
+                        "pubDate": "Thu, 08 Jan 2026 07:56:32 GMT",
+                        "source": "BBC Sport"
+                    }
+                ]
+            },
+            "tennisCom": {
+                "count": 0,
+                "items": []
+            }
+        }
+    },
+    "summary": {
+        "totalTournaments": 2,
+        "upcomingCount": 1,
+        "currentCount": 0,
+        "totalNewsItems": 20,
+        "recentNewsCount": 5,
+        "topRankedPlayers": [
+            "Carlos Alcaraz",
+            "Novak Djokovic",
+            "Jannik Sinner"
+        ]
+    }
+}
