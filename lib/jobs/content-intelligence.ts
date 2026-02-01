@@ -9,7 +9,7 @@ import { createAdminSupabase } from '@/lib/supabase/server';
 import { getPostingStatus } from './posting-rules';
 import { rankOpportunities, scoreTimeliness, scoreAffiliatePotential, scoreSEOValue, scoreSocialEngagement, ContentOpportunity } from './scoring';
 import { getMarshallState, updateLocationForTournament, updateNextLocation } from '@/lib/marshall/state';
-import { hasPostedAboutTournament, hasPostedAboutTopic } from './variety-tracker';
+import { hasPostedAboutTournament, hasPostedAboutTopic, hasPostedInCategory } from './variety-tracker';
 
 export interface ContentOpportunityInput {
   type: ContentOpportunity['type'];
@@ -252,20 +252,57 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
   // State can be managed manually via admin page or auto-updated when tournaments start/end
   const marshallState = await getMarshallState();
   if (marshallState) {
-    // Gear opportunity if Marshall has new racket
-    if (marshallState.current_racket) {
-      opportunities.push({
-        type: 'gear',
-        topic: `Testing ${marshallState.current_racket}`,
-        description: `Review of ${marshallState.current_racket}`,
-        hasAffiliateLinks: !!marshallState.current_racket_affiliate_link,
-        searchVolume: 'medium',
-        isEvergreen: true,
-        metadata: {
-          racket: marshallState.current_racket,
-          affiliate_link: marshallState.current_racket_affiliate_link,
-        },
-      });
+    // Gear opportunity: INFREQUENT comparison guides, not single product reviews
+    // Check if we've posted ANY gear content recently (45 days = very infrequent)
+    const recentGearPosts = await hasPostedInCategory('gear', 45);
+    
+    if (!recentGearPosts) {
+      // Determine gear guide type based on what Marshall has
+      // Priority: Rackets (rarest) > Clothing > Accessories
+      let gearGuideType: 'racket' | 'clothing' | 'accessory' | null = null;
+      let gearGuideTopic = '';
+      let gearGuideDescription = '';
+      
+      // Racket guides: Very infrequent (only if we haven't done one in 60+ days)
+      const recentRacketGuide = await hasPostedAboutTopic('racket', 60);
+      if (!recentRacketGuide && marshallState.current_racket) {
+        gearGuideType = 'racket';
+        gearGuideTopic = `Best Tennis Rackets for 2026: A Complete Guide`;
+        gearGuideDescription = `Comprehensive guide comparing top rackets including ${marshallState.current_racket} and other top models. What to look for, who each racket suits, and honest recommendations.`;
+      }
+      // Clothing guides: Less frequent (30+ days)
+      else if (!await hasPostedAboutTopic('clothing', 30) && !await hasPostedAboutTopic('apparel', 30)) {
+        gearGuideType = 'clothing';
+        gearGuideTopic = `Best Tennis Apparel for 2026: Shorts, Shirts, and More`;
+        gearGuideDescription = `Complete guide to tennis clothing - what works, what doesn't, and what's worth the money.`;
+      }
+      // Accessory guides: Less frequent (30+ days)
+      else if (!await hasPostedAboutTopic('accessory', 30) && !await hasPostedAboutTopic('bag', 30)) {
+        gearGuideType = 'accessory';
+        gearGuideTopic = `Essential Tennis Accessories: Bags, Grips, and More`;
+        gearGuideDescription = `Complete guide to tennis accessories - what you actually need and what's just marketing.`;
+      }
+      
+      if (gearGuideType) {
+        opportunities.push({
+          type: 'gear',
+          topic: gearGuideTopic,
+          description: gearGuideDescription,
+          hasAffiliateLinks: true, // Gear guides will have multiple affiliate links
+          searchVolume: 'medium',
+          isEvergreen: true,
+          metadata: {
+            guide_type: gearGuideType,
+            current_racket: marshallState.current_racket,
+            affiliate_link: marshallState.current_racket_affiliate_link,
+          },
+        });
+        console.log(`[Content Intelligence] ✓ Created ${gearGuideType} guide opportunity (infrequent - last gear post was 45+ days ago)`);
+      } else {
+        console.log(`[Content Intelligence] ⚠️ Skipping gear guide - already posted recently (within 30-60 day window)`);
+      }
+    } else {
+      console.log(`[Content Intelligence] ⚠️ Skipping gear content - posted gear within last 45 days (infrequent strategy)`);
     }
     
     // Up-and-coming player opportunity

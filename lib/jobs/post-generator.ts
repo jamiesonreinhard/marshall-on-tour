@@ -143,15 +143,16 @@ export async function generatePostFromOpportunity(
     // Generate post content
     const postContent = await generatePostContent(context);
     
-    // Generate image
+    // Generate image (strategy will auto-determine if Marshall should be included)
     const imageUrl = await generatePostImage({
-      postType: opportunity.type,
+      postType: contextType,
       topic: opportunity.topic,
       tournament: context.tournament ? {
         name: context.tournament.name,
         location: context.tournament.location,
       } : undefined,
-      includeMarshall,
+      includeMarshall, // Can be overridden by strategy
+      isRecap, // Pass recap flag for strategy
     });
     
     // Create slug from title

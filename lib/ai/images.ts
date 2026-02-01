@@ -1,13 +1,15 @@
 /**
  * Image Generation Integration
  * 
- * Uses Replicate/Flux for generating Marshall images
+ * Uses Replicate/Flux for generating Marshall images with consistency
  */
 
 import Replicate from 'replicate';
+import { getImageStrategy, ImageStrategy } from './image-strategy';
 
 const REPLICATE_API_TOKEN = process.env.REPLICATE_API_TOKEN;
 const BASE_IDENTITY_IMAGE = '/assets/base_identity.png';
+const MARSHALL_FACE_REFERENCE = process.env.MARSHALL_FACE_REFERENCE_URL || BASE_IDENTITY_IMAGE;
 
 if (!REPLICATE_API_TOKEN) {
   console.warn('REPLICATE_API_TOKEN not set. Image generation will fail.');
@@ -20,8 +22,9 @@ export interface ImageGenerationContext {
     name: string;
     location: string;
   };
-  includeMarshall?: boolean; // Whether to include Marshall in the image
-  scene?: string; // Specific scene description
+  includeMarshall?: boolean; // Whether to include Marshall in the image (auto-determined if not provided)
+  scene?: string; // Specific scene description (auto-generated if not provided)
+  isRecap?: boolean; // Flag for recap posts
 }
 
 /**
@@ -35,24 +38,63 @@ export async function generatePostImage(
     return '/consistency_test/consistency_gym_141939.png';
   }
 
-  const prompt = buildImagePrompt(context);
+  // Get image strategy based on post type and content
+  const strategy = getImageStrategy(
+    context.postType,
+    context.topic,
+    context.tournament,
+    context.isRecap
+  );
+  
+  // Override with explicit values if provided
+  const includeMarshall = context.includeMarshall !== undefined 
+    ? context.includeMarshall 
+    : strategy.includeMarshall;
+  
+  const sceneDescription = context.scene || strategy.sceneDescription;
+
+  console.log(`[Image Generation] Strategy: ${strategy.imageType}, Include Marshall: ${includeMarshall}`);
+  console.log(`[Image Generation] Scene: ${sceneDescription.substring(0, 100)}...`);
+
+  const prompt = buildImagePrompt({
+    ...context,
+    includeMarshall,
+    sceneDescription,
+    strategy,
+  });
 
   try {
     const client = new Replicate({
       auth: REPLICATE_API_TOKEN,
     });
 
-    const output = await client.run(
-      'black-forest-labs/flux-dev',
-      {
-        input: {
-          prompt,
-          aspect_ratio: '16:9',
-          output_format: 'png',
-          output_quality: 90,
-        },
-      }
-    );
+    // Use face consistency model if Marshall is included
+    // flux-pulid supports face ID for consistency
+    const useFaceConsistency = includeMarshall && MARSHALL_FACE_REFERENCE && MARSHALL_FACE_REFERENCE !== BASE_IDENTITY_IMAGE;
+    const model = useFaceConsistency
+      ? 'zsxkib/flux-pulid:8baa7ef2255075b46f4d91cd238c21d31181b3e6a864463f967960bb0112525b'
+      : 'black-forest-labs/flux-dev';
+
+    const input: any = {
+      prompt,
+      aspect_ratio: '16:9',
+      output_format: 'png',
+      output_quality: 90,
+    };
+
+    // Add face reference for consistency (flux-pulid model)
+    if (useFaceConsistency) {
+      // flux-pulid uses 'main_face_image' parameter
+      // We need to pass a URL or file handle to the reference image
+      input.main_face_image = MARSHALL_FACE_REFERENCE;
+      input.num_steps = 20;
+      input.guidance_scale = 4;
+      input.start_step = 0; // Apply face ID from the beginning
+      input.id_weight = 1.0; // Maximum strength for face copying
+      console.log(`[Image Generation] Using face consistency model with reference: ${MARSHALL_FACE_REFERENCE}`);
+    }
+
+    const output = await client.run(model, { input });
 
     // Replicate returns a URL or array of URLs
     const imageUrl = Array.isArray(output) ? output[0] : output;
@@ -71,37 +113,35 @@ export async function generatePostImage(
 }
 
 /**
- * Build image generation prompt
+ * Build image generation prompt with consistency and strategy
  */
-function buildImagePrompt(context: ImageGenerationContext): string {
-  const { postType, topic, tournament, includeMarshall = true, scene } = context;
+function buildImagePrompt(context: ImageGenerationContext & { strategy: ImageStrategy; sceneDescription: string }): string {
+  const { includeMarshall, sceneDescription, strategy } = context;
 
   let prompt = '';
 
+  // Marshall's consistent appearance (use same description every time for consistency)
+  const marshallDescription = `Marshall, a handsome 33-year-old tennis tour insider with ambiguous European appearance, olive skin, dark brown hair with light stubble, signature messy textured hair, expressive eyes, athletic build, 5'10" height. `;
+
   if (includeMarshall) {
-    prompt += `A hyper-realistic, candid photo of Marshall, a handsome 33-year-old tennis tour insider. He has an ambiguous European appearance, olive skin, dark hair, light stubble, signature messy textured hair. `;
+    prompt += marshallDescription;
   }
 
-  switch (postType) {
-    case 'gear':
-      prompt += scene || `Marshall reviewing tennis equipment. High-end tennis gear visible. Clean, modern aesthetic. `;
-      break;
-    case 'travel':
-      if (tournament) {
-        prompt += scene || `Marshall in ${tournament.location} for ${tournament.name}. Luxury travel setting, hotel or airport. `;
-      } else {
-        prompt += scene || `Marshall traveling for tennis. Airport, hotel, or tournament location. `;
-      }
-      break;
-    case 'analysis':
-      prompt += scene || `Marshall courtside at a tennis tournament. Professional tennis setting, stadium in background. `;
-      break;
-    case 'lifestyle':
-      prompt += scene || `Marshall in a casual, luxury setting. Coffee shop, hotel lobby, or similar. `;
-      break;
+  // Use strategy-based scene description
+  prompt += sceneDescription;
+
+  // Add style guide from strategy
+  prompt += ` ${strategy.styleGuide}. `;
+
+  // Consistency and quality settings
+  prompt += `Photorealistic, high quality, professional photography. Natural lighting, authentic moment. `;
+  
+  // Face consistency note (if Marshall is included)
+  if (includeMarshall) {
+    prompt += `Maintain consistent facial features and appearance across all images. Same person, same face structure, same hair style. `;
   }
 
-  prompt += `Photorealistic, iPhone 15 Pro aesthetic, unpolished, authentic social media style. Quiet luxury vibe. Shot on iPhone, natural lighting. --ar 16:9`;
+  prompt += `--ar 16:9 --style raw --quality 90`;
 
   return prompt;
 }
