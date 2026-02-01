@@ -171,8 +171,8 @@ export default function PostQueuePage() {
     // Links
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="text-blue-600 hover:underline" target="_blank" rel="noopener">$1</a>');
     
-    // Affiliate links
-    html = html.replace(/\[AFF:([^\]]+)\]/g, '<span class="bg-yellow-100 px-2 py-1 rounded text-sm font-medium">$1</span>');
+    // Affiliate links - show as placeholder in admin (yellow badge) but will be removed/hidden in published posts if no link exists
+    html = html.replace(/\[AFF:([^\]]+)\]/g, '<span class="bg-yellow-100 px-2 py-1 rounded text-sm font-medium" title="Affiliate link placeholder - will be hidden if no link is configured">[AFF:$1]</span>');
     
     // Lists - handle bullet points
     const lines = html.split('\n');

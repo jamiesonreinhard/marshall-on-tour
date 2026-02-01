@@ -41,6 +41,7 @@ export async function markdownToHtml(markdown: string): Promise<string> {
 /**
  * Process affiliate links in markdown
  * Converts [AFF:Product Name] to proper affiliate links
+ * If no affiliate link exists, removes the placeholder entirely (don't show product mentions we can't monetize)
  */
 export function processAffiliateLinks(
   html: string,
@@ -60,8 +61,9 @@ export function processAffiliateLinks(
     );
   });
 
-  // Replace any remaining [AFF:...] patterns with plain text
-  processed = processed.replace(/\[AFF:([^\]]+)\]/g, '$1');
+  // Remove any remaining [AFF:...] patterns entirely (no link = don't show the mention)
+  // This ensures we only mention products when we can actually monetize them
+  processed = processed.replace(/\[AFF:([^\]]+)\]/g, '');
 
   return processed;
 }
