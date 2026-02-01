@@ -14,6 +14,144 @@ export type Database = {
   }
   public: {
     Tables: {
+      atp_calendar: {
+        Row: {
+          category: string | null
+          created_at: string
+          end_date: string
+          id: string
+          last_synced_at: string | null
+          location: Json
+          name: string
+          prize_money: string | null
+          start_date: string
+          surface: string | null
+          tournament_id: string
+          updated_at: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string
+          end_date: string
+          id?: string
+          last_synced_at?: string | null
+          location: Json
+          name: string
+          prize_money?: string | null
+          start_date: string
+          surface?: string | null
+          tournament_id: string
+          updated_at?: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string
+          end_date?: string
+          id?: string
+          last_synced_at?: string | null
+          location?: Json
+          name?: string
+          prize_money?: string | null
+          start_date?: string
+          surface?: string | null
+          tournament_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      content_calendar: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          atp_tournament_id: string | null
+          attitude: string | null
+          blog_schedule: Json | null
+          category: string | null
+          content_brief: string
+          created_at: string
+          events: string[] | null
+          focus_keyword: string | null
+          generated_at: string | null
+          generated_post_id: string | null
+          id: string
+          instagram_schedule: Json | null
+          notes: string | null
+          post_type: string | null
+          scheduled_date: string
+          scheduled_time: string | null
+          status: string | null
+          timezone: string | null
+          tone_notes: string | null
+          updated_at: string
+          x_schedule: Json | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          atp_tournament_id?: string | null
+          attitude?: string | null
+          blog_schedule?: Json | null
+          category?: string | null
+          content_brief: string
+          created_at?: string
+          events?: string[] | null
+          focus_keyword?: string | null
+          generated_at?: string | null
+          generated_post_id?: string | null
+          id?: string
+          instagram_schedule?: Json | null
+          notes?: string | null
+          post_type?: string | null
+          scheduled_date: string
+          scheduled_time?: string | null
+          status?: string | null
+          timezone?: string | null
+          tone_notes?: string | null
+          updated_at?: string
+          x_schedule?: Json | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          atp_tournament_id?: string | null
+          attitude?: string | null
+          blog_schedule?: Json | null
+          category?: string | null
+          content_brief?: string
+          created_at?: string
+          events?: string[] | null
+          focus_keyword?: string | null
+          generated_at?: string | null
+          generated_post_id?: string | null
+          id?: string
+          instagram_schedule?: Json | null
+          notes?: string | null
+          post_type?: string | null
+          scheduled_date?: string
+          scheduled_time?: string | null
+          status?: string | null
+          timezone?: string | null
+          tone_notes?: string | null
+          updated_at?: string
+          x_schedule?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_calendar_atp_tournament_id_fkey"
+            columns: ["atp_tournament_id"]
+            isOneToOne: false
+            referencedRelation: "atp_calendar"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "content_calendar_generated_post_id_fkey"
+            columns: ["generated_post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       posts: {
         Row: {
           affiliate_links: Json | null

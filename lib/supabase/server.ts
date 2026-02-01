@@ -46,5 +46,8 @@ export function createAdminSupabase() {
       autoRefreshToken: false,
       persistSession: false,
     },
+    db: {
+      schema: 'public',
+    },
   })
 }

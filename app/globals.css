@@ -32,6 +32,11 @@ body {
   max-width: 65ch;
 }
 
+/* Allow prose to expand when max-w-none is used */
+.prose.max-w-none {
+  max-width: 100%;
+}
+
 .prose h1,
 .prose h2,
 .prose h3,

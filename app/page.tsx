@@ -24,7 +24,7 @@ export default async function Home() {
     <div className="min-h-screen bg-white">
       {/* Navigation */}
       <nav className="border-b border-zinc-200 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 sm:px-8">
+        <div className="max-w-[1600px] mx-auto px-6 sm:px-8">
           <div className="flex items-center justify-between h-16">
             <Link href="/" className="text-xl font-semibold text-zinc-900 tracking-tight">
               Marshall
@@ -53,7 +53,7 @@ export default async function Home() {
 
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-b from-zinc-50 to-white">
-        <div className="max-w-7xl mx-auto px-6 sm:px-8 py-24 sm:py-32">
+        <div className="max-w-[1600px] mx-auto px-6 sm:px-8 py-24 sm:py-32">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             {/* Text Content */}
             <div className="space-y-8">
@@ -108,7 +108,7 @@ export default async function Home() {
 
       {/* Latest Posts */}
       <section className="py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-6 sm:px-8">
+        <div className="max-w-[1600px] mx-auto px-6 sm:px-8">
           <div className="flex items-center justify-between mb-12">
             <div>
               <h2 className="text-3xl font-bold text-zinc-900 mb-2">Latest from the Tour</h2>
@@ -207,7 +207,7 @@ export default async function Home() {
 
       {/* Footer */}
       <footer className="border-t border-zinc-200 bg-white py-12">
-        <div className="max-w-7xl mx-auto px-6 sm:px-8">
+        <div className="max-w-[1600px] mx-auto px-6 sm:px-8">
           <div className="grid md:grid-cols-3 gap-8 mb-8">
             <div>
               <h3 className="text-lg font-semibold text-zinc-900 mb-4">Marshall</h3>

@@ -27,7 +27,7 @@ export default async function BlogPage({
     <div className="min-h-screen bg-white">
       {/* Navigation */}
       <nav className="border-b border-zinc-200 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 sm:px-8">
+        <div className="max-w-[1600px] mx-auto px-6 sm:px-8">
           <div className="flex items-center justify-between h-16">
             <Link href="/" className="text-xl font-semibold text-zinc-900 tracking-tight">
               Marshall
@@ -49,7 +49,7 @@ export default async function BlogPage({
 
       {/* Header */}
       <header className="border-b border-zinc-200 bg-zinc-50">
-        <div className="max-w-7xl mx-auto px-6 sm:px-8 py-12">
+        <div className="max-w-[1600px] mx-auto px-6 sm:px-8 py-12">
           <h1 className="text-4xl font-bold text-zinc-900 mb-4">Blog</h1>
           <p className="text-lg text-zinc-600">
             Insights, gear reviews, travel guides, and match analysis from the tour
@@ -59,7 +59,7 @@ export default async function BlogPage({
 
       {/* Category Filters */}
       <div className="border-b border-zinc-200 bg-white sticky top-16 z-40">
-        <div className="max-w-7xl mx-auto px-6 sm:px-8">
+        <div className="max-w-[1600px] mx-auto px-6 sm:px-8">
           <div className="flex gap-4 overflow-x-auto py-4">
             <Link
               href="/blog"
@@ -89,7 +89,7 @@ export default async function BlogPage({
       </div>
 
       {/* Posts Grid */}
-      <main className="max-w-7xl mx-auto px-6 sm:px-8 py-12">
+      <main className="max-w-[1600px] mx-auto px-6 sm:px-8 py-12">
         {posts.length > 0 ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
             {posts.map((post) => (

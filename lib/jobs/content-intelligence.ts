@@ -1,0 +1,483 @@
+/**
+ * Content Intelligence Job
+ * 
+ * Evaluates current opportunities and decides what Marshall should post about
+ * Runs 2-3x/day to find the best content opportunities
+ */
+
+import { createAdminSupabase } from '@/lib/supabase/server';
+import { getPostingStatus } from './posting-rules';
+import { rankOpportunities, scoreTimeliness, scoreAffiliatePotential, scoreSEOValue, scoreSocialEngagement, ContentOpportunity } from './scoring';
+import { getMarshallState, updateLocationForTournament, updateNextLocation } from '@/lib/marshall/state';
+
+export interface ContentOpportunityInput {
+  type: ContentOpportunity['type'];
+  topic: string;
+  description: string;
+  eventDate?: Date | null;
+  isLive?: boolean;
+  hoursUntilEvent?: number | null;
+  hasAffiliateLinks?: boolean;
+  searchVolume?: 'high' | 'medium' | 'low';
+  isEvergreen?: boolean;
+  hasViralPotential?: boolean;
+  metadata?: Record<string, any>;
+}
+
+/**
+ * Find content opportunities from various sources
+ */
+export async function findContentOpportunities(): Promise<ContentOpportunityInput[]> {
+  const opportunities: ContentOpportunityInput[] = [];
+  const supabase = createAdminSupabase();
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  
+  // 1. Check active tournaments (currently happening)
+  // CRITICAL: A tournament is "active" only if end_date is AFTER today
+  // If end_date = today, it's ended (not active) - should go to recap logic
+  const { data: activeTournaments } = await supabase
+    .from('atp_calendar')
+    .select('*')
+    .lte('start_date', today) // Tournament has started
+    .gt('end_date', today); // Tournament hasn't ended yet (end_date must be AFTER today, not equal)
+  
+  if (activeTournaments && activeTournaments.length > 0) {
+    console.log(`[Content Intelligence] Found ${activeTournaments.length} active tournaments (today: ${today})`);
+    activeTournaments.forEach(t => {
+      console.log(`  - ${t.name}: start=${t.start_date}, end=${t.end_date}`);
+    });
+    // Auto-update Marshall's location for active tournaments
+    for (const tournament of activeTournaments) {
+      // Check if we need to update location (tournament just started today)
+      if (tournament.start_date === today) {
+        try {
+          await updateLocationForTournament(tournament.id, tournament.name);
+          console.log(`[Content Intelligence] Updated Marshall's location to ${tournament.location}`);
+        } catch (error) {
+          console.error(`[Content Intelligence] Failed to update location for ${tournament.name}:`, error);
+        }
+      }
+    }
+    
+    activeTournaments.forEach(tournament => {
+      const location = tournament.location as { city?: string; country?: string };
+      
+      // Tournament update opportunity
+      opportunities.push({
+        type: 'tournament',
+        topic: `${tournament.name} Day Update`,
+        description: `Daily update from ${tournament.name}`,
+        eventDate: new Date(tournament.start_date),
+        isLive: true,
+        searchVolume: tournament.category === 'Grand Slam' ? 'high' : 'medium',
+        hasViralPotential: tournament.category === 'Grand Slam',
+        metadata: { tournament_id: tournament.id },
+      });
+      
+      // Lifestyle opportunity (if we haven't posted about this location recently)
+      opportunities.push({
+        type: 'lifestyle',
+        topic: `Marshall's Guide to ${location.city}`,
+        description: `Lifestyle content about ${location.city} during ${tournament.name}`,
+        eventDate: new Date(tournament.start_date),
+        hasAffiliateLinks: true,
+        searchVolume: 'medium',
+        metadata: { tournament_id: tournament.id, location },
+      });
+    });
+  }
+  
+  // 2. Check upcoming tournaments (for previews)
+  // CRITICAL: Only create previews if tournament start date is AFTER today
+  // Use strict date comparison to ensure tournament hasn't started
+  const { data: upcomingTournaments } = await supabase
+    .from('atp_calendar')
+    .select('*')
+    .gt('start_date', today) // Tournament start date is AFTER today (hasn't started)
+    .order('start_date', { ascending: true })
+    .limit(3);
+  
+  if (upcomingTournaments && upcomingTournaments.length > 0) {
+    console.log(`[Content Intelligence] Found ${upcomingTournaments.length} upcoming tournaments for previews (today: ${today})`);
+    
+    upcomingTournaments.forEach(tournament => {
+      const startDate = new Date(tournament.start_date + 'T00:00:00');
+      const startDateOnly = tournament.start_date; // Just the date part for comparison
+      const hoursUntil = (startDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+      
+      // CRITICAL: Only create preview if start_date is AFTER today
+      // Double-check with date string comparison (more reliable than hours)
+      // This is a safety check - the query should already filter these out
+      if (startDateOnly <= today) {
+        console.log(`[Content Intelligence] ⚠️ BLOCKED: Skipping ${tournament.name} preview - tournament already started (start_date: ${startDateOnly}, today: ${today})`);
+        return;
+      }
+      
+      // Additional safety: if hoursUntil is negative, tournament has started
+      if (hoursUntil <= 0) {
+        console.log(`[Content Intelligence] ⚠️ BLOCKED: Skipping ${tournament.name} preview - tournament has already started (${Math.round(hoursUntil)} hours until start)`);
+        return;
+      }
+      
+      console.log(`[Content Intelligence] ✓ ${tournament.name} is upcoming (starts ${startDateOnly}, ${Math.round(hoursUntil)} hours away)`);
+      
+      // Create preview opportunity if tournament is more than 24 hours away (up to 1 day before)
+      // This allows preview posts to be created right up until the day before the tournament starts
+      if (hoursUntil > 24) {
+        opportunities.push({
+          type: 'tournament',
+          topic: `${tournament.name} Preview`,
+          description: `Preview of upcoming ${tournament.name}`,
+          hoursUntilEvent: hoursUntil,
+          searchVolume: tournament.category === 'Grand Slam' ? 'high' : 'medium',
+          metadata: { tournament_id: tournament.id },
+        });
+        console.log(`[Content Intelligence] ✓ Created preview opportunity for ${tournament.name}`);
+      } else {
+        console.log(`[Content Intelligence] Skipping ${tournament.name} preview - too close to start (${Math.round(hoursUntil)} hours)`);
+      }
+    });
+  } else {
+    console.log(`[Content Intelligence] No upcoming tournaments found for previews (today: ${today})`);
+  }
+  
+  // 2b. Check recently ended tournaments (for recap posts)
+  // CRITICAL: Include tournaments that ended TODAY (end_date = today) or within last 48 hours
+  // This catches tournaments that just ended and should get recap posts, not previews
+  const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const { data: recentTournaments } = await supabase
+    .from('atp_calendar')
+    .select('*')
+    .lte('end_date', today) // Tournament has ended (end_date is today or before)
+    .gte('end_date', twoDaysAgo) // Ended today or within last 48 hours
+    .order('end_date', { ascending: false })
+    .limit(2);
+  
+  if (recentTournaments && recentTournaments.length > 0) {
+    console.log(`[Content Intelligence] Found ${recentTournaments.length} recently ended tournaments for recaps (today: ${today})`);
+    
+    // Auto-update Marshall's next location when tournaments end
+    for (const tournament of recentTournaments) {
+      const endDateStr = tournament.end_date; // Just the date string (YYYY-MM-DD)
+      const endDate = new Date(endDateStr + 'T23:59:59'); // End of that day
+      
+      // Calculate hours since tournament ended
+      // If tournament ended today, hoursSinceEnd will be negative (we're earlier in the day)
+      // If tournament ended yesterday, it will be positive
+      const hoursSinceEnd = (now.getTime() - endDate.getTime()) / (1000 * 60 * 60);
+      
+      // For tournaments ending today, treat as "just ended" (0 hours ago)
+      const effectiveHoursSinceEnd = endDateStr === today ? 0 : hoursSinceEnd;
+      
+      console.log(`[Content Intelligence] ${tournament.name} ended (end_date: ${endDateStr}, today: ${today}, hoursSinceEnd: ${Math.round(hoursSinceEnd)}, effective: ${Math.round(effectiveHoursSinceEnd)})`);
+      
+      // Update next location if tournament ended today or yesterday
+      if (endDateStr === today || (hoursSinceEnd >= 0 && hoursSinceEnd <= 24)) {
+        try {
+          await updateNextLocation(tournament.id);
+          console.log(`[Content Intelligence] Updated Marshall's next location after ${tournament.name} ended`);
+        } catch (error) {
+          console.error(`[Content Intelligence] Failed to update next location after ${tournament.name}:`, error);
+        }
+      }
+      
+      // Create recap if tournament ended today OR within last 48 hours
+      // Tournaments ending today should ALWAYS get a recap
+      // NOTE: We don't have match data yet, so recap will be generic (no specific results)
+      if (endDateStr === today || (effectiveHoursSinceEnd >= 0 && effectiveHoursSinceEnd <= 48)) {
+        // Create a recap topic - but note we don't have match data
+        // The post generator will add a warning to Gemini to NOT make up results
+        opportunities.push({
+          type: 'tournament',
+          topic: `${tournament.name} 2026: Tournament Recap and Key Takeaways`,
+          description: `Recap and analysis of ${tournament.name} - general observations, atmosphere, and what it means for the rest of the season. NOTE: No match data available - focus on experience and general insights.`,
+          eventDate: endDate,
+          searchVolume: tournament.category === 'Grand Slam' ? 'high' : 'medium',
+          hasViralPotential: tournament.category === 'Grand Slam',
+          metadata: { 
+            tournament_id: tournament.id, 
+            isRecap: true,
+            hasMatchData: false, // Flag that we don't have match data
+          },
+        });
+        console.log(`[Content Intelligence] ✓ Created recap opportunity for ${tournament.name} (ended ${endDateStr === today ? 'today' : Math.round(effectiveHoursSinceEnd) + ' hours ago'}) - NOTE: No match data available, will generate generic recap`);
+      } else {
+        console.log(`[Content Intelligence] Skipping ${tournament.name} recap - ended too long ago (${Math.round(effectiveHoursSinceEnd)} hours)`);
+      }
+    }
+  } else {
+    console.log(`[Content Intelligence] No recently ended tournaments found for recaps (today: ${today}, twoDaysAgo: ${twoDaysAgo})`);
+  }
+  
+  // 3. Check content calendar (planned content takes priority)
+  const { data: calendarEntries } = await supabase
+    .from('content_calendar')
+    .select('*, atp_calendar(*)')
+    .eq('scheduled_date', today)
+    .eq('status', 'approved')
+    .is('generated_post_id', null);
+  
+  if (calendarEntries && calendarEntries.length > 0) {
+    calendarEntries.forEach(entry => {
+      opportunities.push({
+        type: entry.category?.toLowerCase() as ContentOpportunity['type'] || 'tournament',
+        topic: entry.content_brief,
+        description: entry.content_brief,
+        eventDate: new Date(entry.scheduled_date),
+        hasAffiliateLinks: !!entry.atp_tournament_id,
+        searchVolume: 'medium',
+        metadata: {
+          calendar_entry_id: entry.id,
+          tournament_id: entry.atp_tournament_id,
+        },
+      });
+    });
+  }
+  
+  // 4. Check Marshall's state for gear/lifestyle opportunities
+  // NOTE: Marshall's state is optional - if not set, these opportunities won't be created
+  // State can be managed manually via admin page or auto-updated when tournaments start/end
+  const marshallState = await getMarshallState();
+  if (marshallState) {
+    // Gear opportunity if Marshall has new racket
+    if (marshallState.current_racket) {
+      opportunities.push({
+        type: 'gear',
+        topic: `Testing ${marshallState.current_racket}`,
+        description: `Review of ${marshallState.current_racket}`,
+        hasAffiliateLinks: !!marshallState.current_racket_affiliate_link,
+        searchVolume: 'medium',
+        isEvergreen: true,
+        metadata: {
+          racket: marshallState.current_racket,
+          affiliate_link: marshallState.current_racket_affiliate_link,
+        },
+      });
+    }
+    
+    // Up-and-coming player opportunity
+    if (marshallState.up_and_coming_player_watching) {
+      opportunities.push({
+        type: 'player',
+        topic: `Rising Star: ${marshallState.up_and_coming_player_watching}`,
+        description: `Deep dive on ${marshallState.up_and_coming_player_watching}`,
+        searchVolume: 'low', // Unique content, lower search volume
+        hasViralPotential: true, // Could go viral if player breaks through
+        metadata: {
+          player_name: marshallState.up_and_coming_player_watching,
+        },
+      });
+    }
+  }
+  
+  // TODO: Add more opportunity sources:
+  // - Match results (when we have match data)
+  // - News feeds (RSS parsing)
+  // - Weather-based travel tips
+  // - Blast from the past (scheduled, 1-2/month)
+  
+  return opportunities;
+}
+
+/**
+ * Evaluate opportunities and return the best one
+ */
+export async function evaluateOpportunities(): Promise<{
+  bestOpportunity: ContentOpportunity | null;
+  allOpportunities: ContentOpportunity[];
+  postingStatus: Awaited<ReturnType<typeof getPostingStatus>>;
+}> {
+  // Check if we can post
+  const postingStatus = await getPostingStatus();
+  
+  if (!postingStatus.canPostBlog && !postingStatus.canPostSocial) {
+    return {
+      bestOpportunity: null,
+      allOpportunities: [],
+      postingStatus,
+    };
+  }
+  
+  // Find all opportunities
+  const opportunityInputs = await findContentOpportunities();
+  
+  if (opportunityInputs.length === 0) {
+    return {
+      bestOpportunity: null,
+      allOpportunities: [],
+      postingStatus,
+    };
+  }
+  
+  // CRITICAL: Filter out invalid preview opportunities
+  // Double-check that any "Preview" opportunities are for tournaments that haven't started
+  const todayStr = new Date().toISOString().split('T')[0];
+  const validOpportunities = await Promise.all(
+    opportunityInputs.map(async (input) => {
+      // If this is a preview opportunity, verify the tournament hasn't started
+      if (input.topic.toLowerCase().includes('preview') && input.metadata?.tournament_id) {
+        const supabase = createAdminSupabase();
+        const { data: tournament } = await supabase
+          .from('atp_calendar')
+          .select('start_date, end_date, name')
+          .eq('id', input.metadata.tournament_id)
+          .single();
+        
+        if (tournament) {
+          // Block preview if tournament has started (start_date <= today)
+          if (tournament.start_date <= todayStr) {
+            console.log(`[Content Intelligence] 🚫 BLOCKED preview opportunity: "${input.topic}" for ${tournament.name} - tournament already started (start_date: ${tournament.start_date}, today: ${todayStr})`);
+            return null;
+          }
+          // Block preview if tournament has ended (end_date <= today)
+          if (tournament.end_date <= todayStr) {
+            console.log(`[Content Intelligence] 🚫 BLOCKED preview opportunity: "${input.topic}" for ${tournament.name} - tournament already ended (end_date: ${tournament.end_date}, today: ${todayStr})`);
+            return null;
+          }
+          console.log(`[Content Intelligence] ✓ Preview opportunity validated: "${input.topic}" for ${tournament.name} (starts ${tournament.start_date})`);
+        }
+      }
+      return input;
+    })
+  );
+  
+  // Filter out null values (blocked opportunities)
+  const filteredOpportunities = validOpportunities.filter((opp): opp is ContentOpportunityInput => opp !== null);
+  
+  if (filteredOpportunities.length === 0) {
+    console.log(`[Content Intelligence] All opportunities were filtered out`);
+    return {
+      bestOpportunity: null,
+      allOpportunities: [],
+      postingStatus,
+    };
+  }
+  
+  // Score and rank opportunities
+  const scoredOpportunities = await Promise.all(
+    filteredOpportunities.map(async (input) => {
+      const timeliness = scoreTimeliness(
+        input.eventDate || null,
+        input.isLive,
+        input.hoursUntilEvent || null
+      );
+      
+      const affiliatePotential = scoreAffiliatePotential(
+        input.type,
+        input.hasAffiliateLinks
+      );
+      
+      const seoValue = scoreSEOValue(
+        input.topic,
+        input.searchVolume || 'medium',
+        input.isEvergreen
+      );
+      
+      const socialEngagement = scoreSocialEngagement(
+        input.type,
+        input.hasViralPotential
+      );
+      
+      return {
+        id: `${input.type}-${Date.now()}-${Math.random()}`,
+        type: input.type,
+        topic: input.topic,
+        description: input.description,
+        timeliness,
+        affiliatePotential,
+        seoValue,
+        socialEngagement,
+        metadata: input.metadata,
+      };
+    })
+  );
+  
+  const ranked = await rankOpportunities(scoredOpportunities);
+  
+  // Get best opportunity (highest score)
+  const bestOpportunity = ranked.length > 0 ? ranked[0] : null;
+  
+  // Only return best opportunity if score is above threshold
+  const threshold = 50; // Minimum score to generate post
+  if (bestOpportunity && bestOpportunity.totalScore < threshold) {
+    return {
+      bestOpportunity: null,
+      allOpportunities: ranked,
+      postingStatus,
+    };
+  }
+  
+  return {
+    bestOpportunity,
+    allOpportunities: ranked,
+    postingStatus,
+  };
+}
+
+/**
+ * Main content intelligence job
+ * 
+ * This is what gets called by the scheduled job
+ */
+export async function runContentIntelligenceJob(): Promise<{
+  success: boolean;
+  action: 'generated' | 'skipped' | 'no_opportunity';
+  opportunity?: ContentOpportunity;
+  reason?: string;
+}> {
+  try {
+    const { bestOpportunity, postingStatus } = await evaluateOpportunities();
+    
+    if (!bestOpportunity) {
+      return {
+        success: true,
+        action: 'no_opportunity',
+        reason: postingStatus.reason || 'No high-scoring opportunities found',
+      };
+    }
+    
+    if (!postingStatus.canPostBlog) {
+      return {
+        success: true,
+        action: 'skipped',
+        opportunity: bestOpportunity,
+        reason: postingStatus.reason || 'Cannot post blog today',
+      };
+    }
+    
+    // Generate post from opportunity
+    // Import and call post generation function directly
+    try {
+      const { generatePostFromOpportunity } = await import('./post-generator');
+      const result = await generatePostFromOpportunity(bestOpportunity, {
+        publish: false, // Always save as draft for review
+      });
+      
+      if (result.success) {
+        return {
+          success: true,
+          action: 'generated',
+          opportunity: bestOpportunity,
+        };
+      } else {
+        throw new Error(result.error || 'Failed to generate post');
+      }
+    } catch (error: any) {
+      console.error('Error generating post:', error);
+      return {
+        success: false,
+        action: 'skipped',
+        opportunity: bestOpportunity,
+        reason: `Failed to generate post: ${error.message}`,
+      };
+    }
+  } catch (error: any) {
+    console.error('Content intelligence job error:', error);
+    return {
+      success: false,
+      action: 'skipped',
+      reason: error.message,
+    };
+  }
+}
