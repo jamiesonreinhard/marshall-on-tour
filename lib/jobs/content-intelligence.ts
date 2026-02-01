@@ -9,6 +9,7 @@ import { createAdminSupabase } from '@/lib/supabase/server';
 import { getPostingStatus } from './posting-rules';
 import { rankOpportunities, scoreTimeliness, scoreAffiliatePotential, scoreSEOValue, scoreSocialEngagement, ContentOpportunity } from './scoring';
 import { getMarshallState, updateLocationForTournament, updateNextLocation } from '@/lib/marshall/state';
+import { hasPostedAboutTournament, hasPostedAboutTopic } from './variety-tracker';
 
 export interface ContentOpportunityInput {
   type: ContentOpportunity['type'];
@@ -101,7 +102,7 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
   if (upcomingTournaments && upcomingTournaments.length > 0) {
     console.log(`[Content Intelligence] Found ${upcomingTournaments.length} upcoming tournaments for previews (today: ${today})`);
     
-    upcomingTournaments.forEach(tournament => {
+    for (const tournament of upcomingTournaments) {
       const startDate = new Date(tournament.start_date + 'T00:00:00');
       const startDateOnly = tournament.start_date; // Just the date part for comparison
       const hoursUntil = (startDate.getTime() - now.getTime()) / (1000 * 60 * 60);
@@ -111,13 +112,20 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
       // This is a safety check - the query should already filter these out
       if (startDateOnly <= today) {
         console.log(`[Content Intelligence] ⚠️ BLOCKED: Skipping ${tournament.name} preview - tournament already started (start_date: ${startDateOnly}, today: ${today})`);
-        return;
+        continue;
       }
       
       // Additional safety: if hoursUntil is negative, tournament has started
       if (hoursUntil <= 0) {
         console.log(`[Content Intelligence] ⚠️ BLOCKED: Skipping ${tournament.name} preview - tournament has already started (${Math.round(hoursUntil)} hours until start)`);
-        return;
+        continue;
+      }
+      
+      // Check if we've already posted a preview for this tournament
+      const alreadyPostedPreview = await hasPostedAboutTournament(tournament.name, 7); // Check last 7 days for previews
+      if (alreadyPostedPreview) {
+        console.log(`[Content Intelligence] ⚠️ Skipping ${tournament.name} preview - already posted about this tournament recently`);
+        continue;
       }
       
       console.log(`[Content Intelligence] ✓ ${tournament.name} is upcoming (starts ${startDateOnly}, ${Math.round(hoursUntil)} hours away)`);
@@ -137,7 +145,7 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
       } else {
         console.log(`[Content Intelligence] Skipping ${tournament.name} preview - too close to start (${Math.round(hoursUntil)} hours)`);
       }
-    });
+    }
   } else {
     console.log(`[Content Intelligence] No upcoming tournaments found for previews (today: ${today})`);
   }
@@ -183,9 +191,13 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
       }
       
       // Create recap if tournament ended today OR within last 48 hours
-      // Tournaments ending today should ALWAYS get a recap
-      // NOTE: We don't have match data yet, so recap will be generic (no specific results)
-      if (endDateStr === today || (effectiveHoursSinceEnd >= 0 && effectiveHoursSinceEnd <= 48)) {
+      // BUT: Check if we've already posted about this tournament recently
+      const alreadyPostedRecap = await hasPostedAboutTournament(tournament.name, 3); // Check last 3 days
+      const alreadyPostedTopic = await hasPostedAboutTopic(tournament.name, 3);
+      
+      if (alreadyPostedRecap || alreadyPostedTopic) {
+        console.log(`[Content Intelligence] ⚠️ Skipping ${tournament.name} recap - already posted about this tournament recently`);
+      } else if (endDateStr === today || (effectiveHoursSinceEnd >= 0 && effectiveHoursSinceEnd <= 48)) {
         // Create a recap topic - but note we don't have match data
         // The post generator will add a warning to Gemini to NOT make up results
         opportunities.push({

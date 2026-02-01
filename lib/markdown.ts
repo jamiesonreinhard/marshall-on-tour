@@ -41,7 +41,7 @@ export async function markdownToHtml(markdown: string): Promise<string> {
 /**
  * Process affiliate links in markdown
  * Converts [AFF:Product Name] to proper affiliate links
- * If no affiliate link exists, removes the placeholder entirely (don't show product mentions we can't monetize)
+ * If no affiliate link exists, converts to regular product link (non-affiliate) so readers can still find products
  */
 export function processAffiliateLinks(
   html: string,
@@ -49,7 +49,7 @@ export function processAffiliateLinks(
 ): string {
   let processed = html;
 
-  // Replace [AFF:Product Name] with actual affiliate links
+  // Replace [AFF:Product Name] with actual affiliate links (if configured)
   affiliateLinks.forEach((link) => {
     const pattern = new RegExp(
       `\\[AFF:${link.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\]`,
@@ -61,9 +61,17 @@ export function processAffiliateLinks(
     );
   });
 
-  // Remove any remaining [AFF:...] patterns entirely (no link = don't show the mention)
-  // This ensures we only mention products when we can actually monetize them
-  processed = processed.replace(/\[AFF:([^\]]+)\]/g, '');
+  // For any remaining [AFF:...] patterns without affiliate links:
+  // Convert to regular product links (non-affiliate) so readers can still find products
+  // This provides value even before affiliate setup is complete
+  processed = processed.replace(/\[AFF:([^\]]+)\]/g, (match, productName) => {
+    // Generate a non-affiliate Amazon search link
+    // When affiliate tracking is added later, these will automatically upgrade to affiliate links
+    const searchQuery = encodeURIComponent(productName);
+    const amazonUrl = `https://www.amazon.com/s?k=${searchQuery}`;
+    
+    return `<a href="${amazonUrl}" rel="nofollow" target="_blank" class="font-medium underline">${productName}</a>`;
+  });
 
   return processed;
 }

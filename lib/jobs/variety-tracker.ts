@@ -22,11 +22,14 @@ export async function getContentHistory(days: number = 7): Promise<ContentHistor
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - days);
   
+  // Get both published posts AND drafts (to avoid duplicates)
+  // Check created_at as fallback for drafts that don't have published_at
   const { data: posts } = await supabase
     .from('posts')
-    .select('published_at, category, tags, title, content')
-    .gte('published_at', cutoffDate.toISOString())
-    .order('published_at', { ascending: false });
+    .select('published_at, created_at, category, tags, title, content')
+    .or(`published_at.gte.${cutoffDate.toISOString()},and(published_at.is.null,created_at.gte.${cutoffDate.toISOString()})`)
+    .order('published_at', { ascending: false })
+    .order('created_at', { ascending: false });
   
   if (!posts || posts.length === 0) {
     return {
@@ -69,8 +72,9 @@ export async function getContentHistory(days: number = 7): Promise<ContentHistor
     });
     
     // Extract tournaments from title/content
+    // Check both full tournament names and common variations
     const tournamentKeywords = [
-      'australian open', 'french open', 'roland-garros', 'wimbledon', 'us open',
+      'australian open', 'french open', 'roland-garros', 'roland garros', 'wimbledon', 'us open',
       'indian wells', 'miami', 'monte carlo', 'madrid', 'rome', 'cincinnati',
       'canada', 'shanghai', 'paris', 'atp finals',
     ];
@@ -80,10 +84,19 @@ export async function getContentHistory(days: number = 7): Promise<ContentHistor
         tournaments.push(tournament);
       }
     });
+    
+    // Also check if title contains tournament name directly (for recaps/previews)
+    // e.g., "Australian Open 2026: Tournament Recap" should be detected
+    const titleLower = post.title.toLowerCase();
+    tournamentKeywords.forEach(tournament => {
+      if (titleLower.includes(tournament) && !tournaments.includes(tournament)) {
+        tournaments.push(tournament);
+      }
+    });
   });
   
   return {
-    lastPostDate: new Date(posts[0].published_at || posts[0].created_at),
+    lastPostDate: new Date(posts[0]?.published_at || posts[0]?.created_at || new Date()),
     topics: [...new Set(topics)],
     categories: [...new Set(categories)],
     players: [...new Set(players)],
