@@ -66,9 +66,9 @@ export function getImageStrategy(
       return {
         includeMarshall: true,
         imageType: 'gear-showcase',
-        sceneDescription: `Marshall holding or reviewing tennis equipment. High-end tennis gear prominently displayed. Clean, modern aesthetic, product photography style. Professional lighting, gear in focus.`,
-        styleGuide: 'Product photography meets lifestyle. Clean backgrounds, gear is hero. Marshall is secondary but present. Professional but approachable.',
-        consistencyNotes: 'Gear posts should show Marshall with the product. Use consistent face reference for Marshall.',
+        sceneDescription: `Marshall holding or reviewing tennis equipment. High-end tennis gear prominently displayed. Clean, modern aesthetic, product photography style. Professional lighting, gear in focus. Marshall's face centered in frame, looking at camera or product.`,
+        styleGuide: 'Product photography meets lifestyle. Clean backgrounds, gear is hero. Marshall is secondary but present. Professional but approachable. Face centered, portrait-style framing.',
+        consistencyNotes: 'Gear posts should show Marshall with the product. Use consistent face reference for Marshall. Face must be centered in frame.',
       };
     }
   }
@@ -86,13 +86,13 @@ export function getImageStrategy(
   
   // LIFESTYLE POSTS: Marshall in lifestyle settings
   if (postType === 'lifestyle' || topicLower.includes('coffee') || topicLower.includes('hotel') || topicLower.includes('travel')) {
-    return {
-      includeMarshall: true,
-      imageType: 'lifestyle-moment',
-      sceneDescription: `Marshall in a luxury lifestyle setting. Coffee shop, hotel lobby, or city walk. Casual but refined, quiet luxury aesthetic. Natural, candid moment.`,
-      styleGuide: 'Lifestyle photography, candid moments, natural lighting, authentic social media style, quiet luxury vibe',
-      consistencyNotes: 'Lifestyle posts should include Marshall. Use consistent face reference. Focus on authentic moments.',
-    };
+      return {
+        includeMarshall: true,
+        imageType: 'lifestyle-moment',
+        sceneDescription: `Marshall in a luxury lifestyle setting. Coffee shop, hotel lobby, or city walk. Casual but refined, quiet luxury aesthetic. Natural, candid moment. Marshall's face centered in frame, looking at camera.`,
+        styleGuide: 'Lifestyle photography, candid moments, natural lighting, authentic social media style, quiet luxury vibe. Face centered, portrait-style composition.',
+        consistencyNotes: 'Lifestyle posts should include Marshall. Use consistent face reference. Focus on authentic moments. Face must be centered in frame.',
+      };
   }
   
   // ANALYSIS/MATCH POSTS: Tournament scene or player action
@@ -110,9 +110,9 @@ export function getImageStrategy(
       return {
         includeMarshall: true,
         imageType: 'tournament-scene',
-        sceneDescription: `Marshall courtside at a tennis tournament. Professional tennis setting, stadium in background. Marshall observing, notebook or coffee in hand. Authentic insider moment.`,
-        styleGuide: 'Documentary-style photography, Marshall as observer, tournament atmosphere, authentic insider perspective',
-        consistencyNotes: 'Analysis posts can include Marshall as observer. Use consistent face reference.',
+        sceneDescription: `Marshall courtside at a tennis tournament. Professional tennis setting, stadium in background. Marshall observing, notebook or coffee in hand. Authentic insider moment. Marshall's face centered in frame, looking at camera or court.`,
+        styleGuide: 'Documentary-style photography, Marshall as observer, tournament atmosphere, authentic insider perspective. Face centered, portrait-style framing.',
+        consistencyNotes: 'Analysis posts can include Marshall as observer. Use consistent face reference. Face must be centered in frame.',
       };
     }
   }
@@ -121,8 +121,8 @@ export function getImageStrategy(
   return {
     includeMarshall: true,
     imageType: 'marshall-portrait',
-    sceneDescription: `Marshall, a handsome 33-year-old tennis tour insider. Candid portrait, authentic moment.`,
-    styleGuide: 'Portrait photography, natural lighting, authentic social media style',
-    consistencyNotes: 'Default to Marshall portrait. Use consistent face reference.',
+    sceneDescription: `Marshall, a handsome 33-year-old tennis tour insider. Candid portrait, authentic moment. Face centered in frame, looking directly at camera.`,
+    styleGuide: 'Portrait photography, natural lighting, authentic social media style. Face centered, classic portrait composition.',
+    consistencyNotes: 'Default to Marshall portrait. Use consistent face reference. Face must be centered in frame.',
   };
 }

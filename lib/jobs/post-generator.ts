@@ -130,6 +130,36 @@ export async function generatePostFromOpportunity(
                     opportunity.topic.toLowerCase().includes('final') ||
                     opportunity.topic.toLowerCase().includes('champions crowned');
     
+    // Fetch gear data if this is a gear post
+    let gearData = null;
+    if (contextType === 'gear') {
+      const supabase = createAdminSupabase();
+      const guideType = opportunity.metadata?.guide_type || 'racket'; // 'racket', 'clothing', 'accessory'
+      
+      // Map guide type to gear type
+      const gearTypeMap: Record<string, string> = {
+        'racket': 'racket',
+        'clothing': 'apparel',
+        'accessory': 'bag', // or 'strings', 'grip', etc.
+      };
+      
+      const gearType = gearTypeMap[guideType] || 'racket';
+      
+      // Try to fetch from gear_items table (if it exists)
+      const { data: gearItems, error: gearError } = await supabase
+        .from('gear_items')
+        .select('*')
+        .eq('type', gearType)
+        .limit(10);
+      
+      if (!gearError && gearItems && gearItems.length > 0) {
+        gearData = gearItems;
+        console.log(`[Post Generator] Found ${gearItems.length} gear items for ${guideType} guide`);
+      } else {
+        console.warn(`[Post Generator] No gear data found in database. Gemini will use general knowledge (may be outdated). Error: ${gearError?.message || 'No gear_items table or no data'}`);
+      }
+    }
+    
     // Build context for Gemini
     const context = {
       type: contextType,
@@ -138,6 +168,7 @@ export async function generatePostFromOpportunity(
       recentPosts: recentPostsContext,
       isRecap, // Flag to indicate this is a recap post
       tournamentNews, // Real news data from RSS feeds for recap posts
+      gearData, // Real gear data from database for gear posts
     };
     
     // Generate post content

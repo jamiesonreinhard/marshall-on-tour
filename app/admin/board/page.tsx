@@ -220,6 +220,46 @@ const initialTasks: Task[] = [
     priority: 'high',
     description: 'Web scraping for match data (ATP Tour, FlashScore) - Strategy documented',
   },
+  {
+    id: '26',
+    title: 'Gear Database & Content System',
+    status: 'in_progress',
+    category: 'content',
+    priority: 'high',
+    description: 'Create gear_items table, source product data from existing guides, populate database. Build gear guides and quizzes infrastructure.',
+  },
+  {
+    id: '27',
+    title: 'Image Generation Strategy',
+    status: 'done',
+    category: 'infrastructure',
+    priority: 'high',
+    description: 'Strategy-based image generation (tournament scenes, product photos, lifestyle). Face consistency with flux-pulid model - ✅ Complete',
+  },
+  {
+    id: '28',
+    title: 'Content Duplicate Prevention',
+    status: 'done',
+    category: 'content',
+    priority: 'high',
+    description: 'Variety tracker prevents duplicate content. 45-day minimum for gear posts, tournament recaps check recent posts - ✅ Complete',
+  },
+  {
+    id: '29',
+    title: 'API Cost Tracking',
+    status: 'done',
+    category: 'infrastructure',
+    priority: 'medium',
+    description: 'Track spending across all APIs with $20/week budget. Dashboard shows weekly/daily costs - ✅ Complete',
+  },
+  {
+    id: '30',
+    title: 'Job Execution Logging',
+    status: 'done',
+    category: 'infrastructure',
+    priority: 'medium',
+    description: 'Log all background job runs with status, duration, and results. View in admin jobs page - ✅ Complete',
+  },
 ];
 
 export default function ProjectBoard() {

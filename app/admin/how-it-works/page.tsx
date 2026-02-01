@@ -280,13 +280,16 @@ export default function HowItWorksPage() {
 
                     <StepCard
                       number={3}
-                      title="Check Posting Rules"
-                      description="Verify we can post:"
+                      title="Check Posting Rules & Variety"
+                      description="Verify we can post and haven't duplicated content:"
                       items={[
                         'Max 1 blog post per day',
                         'Max 3-4 social posts per day',
                         'Min 12 hours between blog posts',
                         'Haven\'t posted about this topic recently (variety check)',
+                        'Haven\'t posted about this tournament recently (for recaps/previews)',
+                        'Gear posts: 45-day minimum between any gear content',
+                        'Tournament previews: Only 24 hours - 5 days before start',
                       ]}
                     />
 
@@ -314,6 +317,9 @@ export default function HowItWorksPage() {
                         'Aggregated real data (prevents AI flagging)',
                         'Content opportunity context',
                         'SEO keywords and focus',
+                        '2-agent pipeline: Fact-Checker → Editor (for accuracy)',
+                        'Gear data from database (for gear guides)',
+                        'RSS news data (for tournament recaps)',
                       ]}
                     />
 
@@ -390,7 +396,7 @@ export default function HowItWorksPage() {
                     <DataSourceCard
                       name="Weather API"
                       status="Active"
-                      source="OpenWeatherMap"
+                      source="Open-Meteo (free, no API key)"
                       data="Temperature, conditions, forecast for tournament locations"
                       cache="6 hours"
                     />
@@ -424,9 +430,9 @@ export default function HowItWorksPage() {
                     />
                     <DataSourceCard
                       name="Gear Data"
-                      status="Planned"
-                      source="Manual database or scraping"
-                      data="Racket specs, reviews, affiliate links"
+                      status="Active"
+                      source="gear_items database table (sourced from existing guides)"
+                      data="Racket specs, reviews, pros/cons, affiliate links, best_for recommendations"
                       cache="24 hours"
                     />
                   </div>
@@ -498,9 +504,10 @@ export default function HowItWorksPage() {
                     </p>
                     <ul className="list-disc list-inside space-y-1 text-gray-700 ml-2">
                       <li>Haven't posted about this player in 3 days</li>
-                      <li>Haven't posted about this tournament in 2 days</li>
-                      <li>Haven't posted gear content in 4 days</li>
+                      <li>Haven't posted about this tournament in 2-3 days (recaps/previews)</li>
+                      <li>Haven't posted gear content in 45 days (very infrequent)</li>
                       <li>Mix of categories (not all analysis)</li>
+                      <li>Tournament previews only 24 hours - 5 days before start</li>
                     </ul>
                     <p className="text-gray-600 text-sm mt-3 italic">
                       This prevents Marshall from posting about Alcaraz 5 days in a row.
@@ -604,6 +611,21 @@ export default function HowItWorksPage() {
                       name="marshall_state"
                       purpose="Marshall's current state (singleton)"
                       keyFields="current_racket, current_city, up_and_coming_player_watching"
+                    />
+                    <TableCard
+                      name="gear_items"
+                      purpose="Product database for gear guides and quizzes"
+                      keyFields="name, brand, type, specifications, amazon_affiliate_link"
+                    />
+                    <TableCard
+                      name="api_costs"
+                      purpose="API spending tracking ($20/week budget)"
+                      keyFields="service, operation, cost, created_at"
+                    />
+                    <TableCard
+                      name="job_logs"
+                      purpose="Background job execution logs"
+                      keyFields="job_name, status, started_at, duration_ms"
                     />
                   </div>
                 </div>

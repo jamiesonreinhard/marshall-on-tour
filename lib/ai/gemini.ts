@@ -9,6 +9,8 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 // Best options: gemini-2.5-flash (fast), gemini-2.5-pro (quality), gemini-flash-latest (always latest)
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash';
 
+import { parse429Error, isQuotaExceeded, markQuotaExceeded, sleep, getQuotaStatus } from './rate-limiter';
+
 if (!GEMINI_API_KEY) {
   console.warn('GEMINI_API_KEY not set. Post generation will fail.');
 }
@@ -38,6 +40,20 @@ export interface PostGenerationContext {
     url: string;
     source: string;
     published_at: string;
+  }>;
+  gearData?: Array<{ // Real gear data from database for gear posts
+    id: string;
+    name: string;
+    brand: string;
+    type: string;
+    category?: string;
+    specifications?: Record<string, any>;
+    price_range?: string;
+    amazon_affiliate_link?: string;
+    description?: string;
+    pros?: string[];
+    cons?: string[];
+    best_for?: string;
   }>;
 }
 
@@ -84,15 +100,24 @@ export async function generatePostContent(context: PostGenerationContext): Promi
   console.log(prompt);
   console.log('='.repeat(80) + '\n');
 
+  // Check if we're in a quota exceeded state
+  if (isQuotaExceeded()) {
+    const status = getQuotaStatus();
+    const waitTime = status.retryAfter ? status.retryAfter * 1000 : 60000; // Default 60 seconds
+    throw new Error(`Gemini quota exceeded. Please wait ${Math.ceil(waitTime / 1000)} seconds before retrying. ${status.lastError || ''}`);
+  }
+
   // Try multiple model names as fallback (all with models/ prefix)
-  // Based on available models from your API key
+  // Prioritize paid tier models first (if you have paid tier access)
+  // Free tier: gemini-2.5-flash has higher limits than gemini-2.0-flash
   const modelsToTry = [
     GEMINI_MODEL, // User preference or default
-    'models/gemini-2.5-flash', // Fast, recommended
-    'models/gemini-2.5-pro', // Better quality
+    'models/gemini-2.5-flash', // Fast, recommended (higher free tier limits)
+    'models/gemini-2.5-pro', // Better quality (if paid tier)
     'models/gemini-flash-latest', // Always latest flash
-    'models/gemini-pro-latest', // Always latest pro
-    'models/gemini-2.0-flash', // Fallback
+    // Removed gemini-2.0-flash from primary list (lower free tier limits)
+    // Only try as last resort
+    'models/gemini-2.0-flash', // Last resort fallback
   ];
 
   let lastError: Error | null = null;
@@ -133,6 +158,23 @@ export async function generatePostContent(context: PostGenerationContext): Promi
 
           if (!response.ok) {
             const errorText = await response.text();
+            
+            // Handle 429 (quota exceeded) errors
+            if (response.status === 429) {
+              const quotaInfo = parse429Error(errorText);
+              if (quotaInfo) {
+                markQuotaExceeded(quotaInfo.retryAfter, quotaInfo.message);
+                // Wait a bit before trying next model (might help if different model has different quota)
+                await sleep(2000);
+              }
+              lastVersionError = new Error(`Gemini API error (${version}/${model}): ${response.status} - ${errorText}`);
+              // Don't continue to next version if quota exceeded - all will fail
+              if (quotaInfo) {
+                break; // Break out of version loop, try next model
+              }
+              continue;
+            }
+            
             lastVersionError = new Error(`Gemini API error (${version}/${model}): ${response.status} - ${errorText}`);
             // Try next API version
             continue;
@@ -179,45 +221,66 @@ export async function generatePostContent(context: PostGenerationContext): Promi
           const initialDraft = await parseGeneratedContent(generatedText, context);
           
           // 2-AGENT PIPELINE: Fact-Check → Edit
-          console.log('\n' + '='.repeat(80));
-          console.log('🔍 FACT-CHECKER AGENT');
-          console.log('='.repeat(80));
-          
-          const { factCheckPost } = await import('./fact-checker');
-          const factCheckResult = await factCheckPost(initialDraft.content, context);
-          
-          if (factCheckResult.hasIssues) {
-            console.log(`Found ${factCheckResult.issues.length} issues:`);
-            factCheckResult.issues.forEach((issue, idx) => {
-              console.log(`  ${idx + 1}. [${issue.severity.toUpperCase()}] ${issue.type}: ${issue.issue}`);
-              console.log(`     Original: "${issue.originalText.substring(0, 60)}..."`);
-            });
-            
+          // Skip if quota is already exceeded to avoid wasting more API calls
+          if (!isQuotaExceeded()) {
             console.log('\n' + '='.repeat(80));
-            console.log('✏️ EDITOR AGENT');
+            console.log('🔍 FACT-CHECKER AGENT');
             console.log('='.repeat(80));
             
-            const { editPost } = await import('./editor');
-            const editResult = await editPost(
-              initialDraft.content,
-              initialDraft.title,
-              initialDraft.excerpt,
-              factCheckResult.issues,
-              context
-            );
-            
-            if (editResult.success && editResult.editedContent) {
-              console.log('✅ Post edited successfully');
-              return {
-                ...initialDraft,
-                content: editResult.editedContent,
-              };
-            } else {
-              console.warn('⚠️ Editor failed, using original draft:', editResult.error);
-              return initialDraft;
+            try {
+              const { factCheckPost } = await import('./fact-checker');
+              const factCheckResult = await factCheckPost(initialDraft.content, context);
+              
+              if (factCheckResult.hasIssues) {
+                console.log(`Found ${factCheckResult.issues.length} issues:`);
+                factCheckResult.issues.forEach((issue, idx) => {
+                  console.log(`  ${idx + 1}. [${issue.severity.toUpperCase()}] ${issue.type}: ${issue.issue}`);
+                  console.log(`     Original: "${issue.originalText.substring(0, 60)}..."`);
+                });
+                
+                // Only run editor if quota is still OK
+                if (!isQuotaExceeded()) {
+                  console.log('\n' + '='.repeat(80));
+                  console.log('✏️ EDITOR AGENT');
+                  console.log('='.repeat(80));
+                  
+                  const { editPost } = await import('./editor');
+                  const editResult = await editPost(
+                    initialDraft.content,
+                    initialDraft.title,
+                    initialDraft.excerpt,
+                    factCheckResult.issues,
+                    context
+                  );
+                  
+                  if (editResult.success && editResult.editedContent) {
+                    console.log('✅ Post edited successfully');
+                    return {
+                      ...initialDraft,
+                      content: editResult.editedContent,
+                    };
+                  } else {
+                    console.warn('⚠️ Editor failed, using original draft:', editResult.error);
+                    return initialDraft;
+                  }
+                } else {
+                  console.warn('⚠️ Quota exceeded, skipping editor. Using fact-checked draft.');
+                  return initialDraft;
+                }
+              } else {
+                console.log('✅ No issues found - post passes fact-check');
+                return initialDraft;
+              }
+            } catch (factCheckError: any) {
+              // If fact-checker fails due to quota, just use the original draft
+              if (factCheckError.message?.includes('quota') || factCheckError.message?.includes('429')) {
+                console.warn('⚠️ Fact-checker hit quota limit, using original draft');
+                return initialDraft;
+              }
+              throw factCheckError;
             }
           } else {
-            console.log('✅ No issues found - post passes fact-check');
+            console.warn('⚠️ Quota exceeded, skipping fact-checker/editor. Using original draft.');
             return initialDraft;
           }
         } catch (error: any) {
@@ -244,7 +307,7 @@ export async function generatePostContent(context: PostGenerationContext): Promi
  * Build the prompt for Gemini
  */
 function buildPrompt(context: PostGenerationContext): string {
-  const { type, topic, tournament, newsItem, affiliateProducts, recentPosts, isRecap, tournamentNews } = context;
+  const { type, topic, tournament, newsItem, affiliateProducts, recentPosts, isRecap, tournamentNews, gearData } = context;
 
   let prompt = `You are Marshall, a 33-year-old tennis tour insider and travel blogger. You've been following the ATP Tour for a decade, living out of a suitcase.
 
@@ -269,6 +332,56 @@ Write a blog post about: ${topic}
 POST TYPE: ${type}
 
 `;
+
+  // Add gear data if this is a gear post
+  if (type === 'gear' && gearData && gearData.length > 0) {
+    prompt += `✅ GEAR DATA AVAILABLE - USE THIS REAL DATA ✅\n\n`;
+    prompt += `You have access to REAL gear data from the database. Use this information to write an ACCURATE guide.\n\n`;
+    prompt += `GEAR ITEMS TO INCLUDE:\n\n`;
+    
+    gearData.forEach((item, index) => {
+      prompt += `${index + 1}. ${item.name} (${item.brand})\n`;
+      if (item.description) prompt += `   Description: ${item.description}\n`;
+      if (item.specifications) {
+        prompt += `   Specifications:\n`;
+        Object.entries(item.specifications).forEach(([key, value]) => {
+          prompt += `     - ${key}: ${value}\n`;
+        });
+      }
+      if (item.price_range) prompt += `   Price: ${item.price_range}\n`;
+      if (item.pros && item.pros.length > 0) {
+        prompt += `   Pros: ${item.pros.join(', ')}\n`;
+      }
+      if (item.cons && item.cons.length > 0) {
+        prompt += `   Cons: ${item.cons.join(', ')}\n`;
+      }
+      if (item.best_for) prompt += `   Best for: ${item.best_for}\n`;
+      if (item.amazon_affiliate_link) {
+        prompt += `   Affiliate link available: ${item.amazon_affiliate_link}\n`;
+      }
+      prompt += `\n`;
+    });
+    
+    prompt += `INSTRUCTIONS FOR GEAR POSTS:\n`;
+    prompt += `- Use the gear data above to write an ACCURATE comparison guide\n`;
+    prompt += `- Include all the products listed above in your guide\n`;
+    prompt += `- Use the specifications, pros, cons, and "best for" information provided\n`;
+    prompt += `- Be honest about each product - use the pros/cons provided\n`;
+    prompt += `- Include affiliate links using [AFF:Product Name] format for products that have amazon_affiliate_link\n`;
+    prompt += `- DO NOT make up specifications or features that aren't in the data above\n`;
+    prompt += `- If the data doesn't have specific details, you can say "check current pricing" or "specs may vary"\n`;
+    prompt += `- Write in Marshall's voice - add your own analysis and opinions, but base them on the real data\n\n`;
+  } else if (type === 'gear') {
+    prompt += `⚠️ WARNING: NO GEAR DATA AVAILABLE ⚠️\n\n`;
+    prompt += `You are writing a gear guide but NO gear data was provided from the database.\n`;
+    prompt += `This means you'll need to use general knowledge, which may be outdated or inaccurate.\n\n`;
+    prompt += `IMPORTANT:\n`;
+    prompt += `- Be honest that you're writing based on general knowledge\n`;
+    prompt += `- Focus on general principles and what to look for in gear\n`;
+    prompt += `- Avoid making specific claims about current models or prices\n`;
+    prompt += `- Consider writing more about "what to look for" rather than specific product recommendations\n`;
+    prompt += `- If you mention specific products, note that readers should verify current specs/pricing\n\n`;
+  }
 
   if (tournament) {
     prompt += `TOURNAMENT CONTEXT:

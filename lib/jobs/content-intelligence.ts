@@ -130,9 +130,10 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
       
       console.log(`[Content Intelligence] ✓ ${tournament.name} is upcoming (starts ${startDateOnly}, ${Math.round(hoursUntil)} hours away)`);
       
-      // Create preview opportunity if tournament is more than 24 hours away (up to 1 day before)
-      // This allows preview posts to be created right up until the day before the tournament starts
-      if (hoursUntil > 24) {
+      // Create preview opportunity if tournament is between 24 hours and 5 days away
+      // Don't create previews more than 5 days before (too early) or less than 24 hours before (too late)
+      const hoursIn5Days = 5 * 24; // 120 hours
+      if (hoursUntil > 24 && hoursUntil <= hoursIn5Days) {
         opportunities.push({
           type: 'tournament',
           topic: `${tournament.name} Preview`,
@@ -141,9 +142,11 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
           searchVolume: tournament.category === 'Grand Slam' ? 'high' : 'medium',
           metadata: { tournament_id: tournament.id },
         });
-        console.log(`[Content Intelligence] ✓ Created preview opportunity for ${tournament.name}`);
+        console.log(`[Content Intelligence] ✓ Created preview opportunity for ${tournament.name} (${Math.round(hoursUntil)} hours until start)`);
+      } else if (hoursUntil <= 24) {
+        console.log(`[Content Intelligence] Skipping ${tournament.name} preview - too close to start (${Math.round(hoursUntil)} hours, need at least 24 hours)`);
       } else {
-        console.log(`[Content Intelligence] Skipping ${tournament.name} preview - too close to start (${Math.round(hoursUntil)} hours)`);
+        console.log(`[Content Intelligence] Skipping ${tournament.name} preview - too far in advance (${Math.round(hoursUntil)} hours, max is ${hoursIn5Days} hours / 5 days)`);
       }
     }
   } else {

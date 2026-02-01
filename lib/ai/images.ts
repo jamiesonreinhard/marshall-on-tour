@@ -125,6 +125,8 @@ function buildImagePrompt(context: ImageGenerationContext & { strategy: ImageStr
 
   if (includeMarshall) {
     prompt += marshallDescription;
+    // CRITICAL: Face centering and framing instructions
+    prompt += `COMPOSITION: Center Marshall's face in the frame. Face should be the focal point, positioned in the center of the image. Use rule of thirds with face centered. Portrait or headshot framing preferred. `;
   }
 
   // Use strategy-based scene description
@@ -136,9 +138,10 @@ function buildImagePrompt(context: ImageGenerationContext & { strategy: ImageStr
   // Consistency and quality settings
   prompt += `Photorealistic, high quality, professional photography. Natural lighting, authentic moment. `;
   
-  // Face consistency note (if Marshall is included)
+  // Face consistency and centering (if Marshall is included)
   if (includeMarshall) {
     prompt += `Maintain consistent facial features and appearance across all images. Same person, same face structure, same hair style. `;
+    prompt += `CRITICAL FRAMING: Marshall's face must be centered in the frame. Face should be the primary focal point. Use portrait composition with face centered horizontally and vertically. Avoid off-center or angled compositions. `;
   }
 
   prompt += `--ar 16:9 --style raw --quality 90`;

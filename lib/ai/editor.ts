@@ -14,6 +14,8 @@ import { FactCheckIssue } from './fact-checker';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'models/gemini-2.5-flash';
 
+import { parse429Error, isQuotaExceeded, markQuotaExceeded, sleep } from './rate-limiter';
+
 export interface EditResult {
   success: boolean;
   editedContent?: string;
