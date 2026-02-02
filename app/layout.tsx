@@ -16,6 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Marshall | The Tour, from the Inside",
   description: "Follow Marshall as he travels the ATP Tour, sharing insights on tennis, gear, and the best places to stay. The ultimate tour insider's guide to tennis, travel, and quiet luxury.",
+  manifest: "/manifest.json",
 };
 
 export default function RootLayout({
@@ -26,6 +27,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
+        <link rel="manifest" href="/manifest.json" />
         <script
           type="text/javascript"
           dangerouslySetInnerHTML={{

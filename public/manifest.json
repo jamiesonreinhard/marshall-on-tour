@@ -1,0 +1,16 @@
+{
+  "name": "Marshall | The Tour, from the Inside",
+  "short_name": "Marshall",
+  "description": "Follow Marshall as he travels the ATP Tour, sharing insights on tennis, gear, and the best places to stay.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/assets/base_identity.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

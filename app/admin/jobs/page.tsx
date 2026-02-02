@@ -64,6 +64,12 @@ export default function JobsPage() {
   const [logs, setLogs] = useState<JobLog[]>([]);
   const [logsLoading, setLogsLoading] = useState(false);
   const [selectedJobFilter, setSelectedJobFilter] = useState<string>('all');
+  
+  // Post generation options
+  const [showPostTypeModal, setShowPostTypeModal] = useState(false);
+  const [selectedPostType, setSelectedPostType] = useState<string>('auto');
+  const [selectedPostCategory, setSelectedPostCategory] = useState<string>('');
+  const [customTopic, setCustomTopic] = useState<string>('');
 
   useEffect(() => {
     if (activeTab === 'logs') {
@@ -85,14 +91,33 @@ export default function JobsPage() {
     }
   };
 
-  const runJob = async (job: Job) => {
+  const runJob = async (job: Job, options?: { type?: string; topic?: string; category?: string }) => {
     setRunningJobs(prev => new Set(prev).add(job.id));
     
     try {
+      // Build request body for POST requests
+      let body: any = {};
+      
+      // Special handling for "Generate Post (Manual)" job
+      if (job.id === 'generate-post' && options) {
+        // Pass type directly - API will handle mapping to ContentOpportunity
+        if (options.type && options.type !== 'auto') {
+          body.type = options.type;
+        }
+        
+        if (options.topic) {
+          body.topic = options.topic;
+        }
+        
+        if (options.category) {
+          body.category = options.category;
+        }
+      }
+      
       const response = await fetch(job.endpoint, {
         method: job.method,
         headers: job.method === 'POST' ? { 'Content-Type': 'application/json' } : {},
-        body: job.method === 'POST' ? JSON.stringify({}) : undefined,
+        body: job.method === 'POST' ? JSON.stringify(body) : undefined,
       });
       
       const data = await response.json();
@@ -218,7 +243,14 @@ export default function JobsPage() {
                         </div>
                       </div>
                       <button
-                        onClick={() => runJob(job)}
+                        onClick={() => {
+                          // Show modal for "Generate Post (Manual)" job
+                          if (job.id === 'generate-post') {
+                            setShowPostTypeModal(true);
+                          } else {
+                            runJob(job);
+                          }
+                        }}
                         disabled={isRunning}
                         className={`px-4 py-2 rounded-lg font-semibold transition-colors ml-4 ${
                           isRunning
@@ -388,6 +420,143 @@ export default function JobsPage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+        
+        {/* Post Type Selection Modal */}
+        {showPostTypeModal && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            onClick={() => setShowPostTypeModal(false)}
+          >
+            <div
+              className="bg-gray-900/60 backdrop-blur-sm fixed inset-0"
+              onClick={(e) => e.stopPropagation()}
+            />
+            <div
+              className="bg-white rounded-lg shadow-2xl max-w-2xl w-full z-50 p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">Generate Post - Select Type</h2>
+                <button
+                  onClick={() => setShowPostTypeModal(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="space-y-6">
+                {/* Post Type Selection */}
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Post Type
+                  </label>
+                  <select
+                    value={selectedPostType}
+                    onChange={(e) => {
+                      setSelectedPostType(e.target.value);
+                      setSelectedPostCategory('');
+                      setCustomTopic('');
+                    }}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="auto">Auto (Best Available Opportunity)</option>
+                    <option value="tournament">Tournament Post</option>
+                    <option value="match">Match Analysis</option>
+                    <option value="player">Player Profile / Up-and-Coming Player</option>
+                    <option value="gear">Gear Guide</option>
+                    <option value="lifestyle">Lifestyle / Travel</option>
+                    <option value="news">News Analysis</option>
+                    <option value="blast-from-past">Blast from the Past (Nostalgia)</option>
+                  </select>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {selectedPostType === 'auto' && 'Will automatically select the best available opportunity'}
+                    {selectedPostType === 'tournament' && 'Tournament preview, recap, or analysis post'}
+                    {selectedPostType === 'match' && 'Match analysis or breakdown'}
+                    {selectedPostType === 'player' && 'Profile of an up-and-coming or established player'}
+                    {selectedPostType === 'gear' && 'Gear guide or product comparison'}
+                    {selectedPostType === 'lifestyle' && 'Travel, lifestyle, or city guide content'}
+                    {selectedPostType === 'news' && 'Analysis of recent tennis news'}
+                    {selectedPostType === 'blast-from-past' && 'Nostalgic post about past players or moments'}
+                  </p>
+                </div>
+                
+                {/* Category Selection (for gear posts) */}
+                {selectedPostType === 'gear' && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Gear Category
+                    </label>
+                    <select
+                      value={selectedPostCategory}
+                      onChange={(e) => setSelectedPostCategory(e.target.value)}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    >
+                      <option value="">Auto-select</option>
+                      <option value="racket">Rackets</option>
+                      <option value="clothing">Clothing / Apparel</option>
+                      <option value="accessory">Accessories (Bags, Strings, Grips, etc.)</option>
+                    </select>
+                  </div>
+                )}
+                
+                {/* Custom Topic */}
+                {selectedPostType !== 'auto' && (
+                  <div>
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Topic (Optional)
+                    </label>
+                    <input
+                      type="text"
+                      value={customTopic}
+                      onChange={(e) => setCustomTopic(e.target.value)}
+                      placeholder="e.g., 'Australian Open 2026 Preview' or 'Best Tennis Rackets for 2026'"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Leave empty to let the system generate a topic based on available data
+                    </p>
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex items-center justify-end gap-3 mt-6 pt-6 border-t border-gray-200">
+                <button
+                  onClick={() => setShowPostTypeModal(false)}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    const job = jobs.find(j => j.id === 'generate-post');
+                    if (job) {
+                      const options: any = {};
+                      if (selectedPostType !== 'auto') {
+                        options.type = selectedPostType;
+                      }
+                      if (customTopic) {
+                        options.topic = customTopic;
+                      }
+                      if (selectedPostCategory) {
+                        options.category = selectedPostCategory;
+                      }
+                      
+                      setShowPostTypeModal(false);
+                      runJob(job, options);
+                    }
+                  }}
+                  disabled={runningJobs.has('generate-post')}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Generate Post
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>

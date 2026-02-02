@@ -66,9 +66,9 @@ export function getImageStrategy(
       return {
         includeMarshall: true,
         imageType: 'gear-showcase',
-        sceneDescription: `Marshall holding or reviewing tennis equipment. High-end tennis gear prominently displayed. Clean, modern aesthetic, product photography style. Professional lighting, gear in focus. Marshall's face centered in frame, looking at camera or product.`,
-        styleGuide: 'Product photography meets lifestyle. Clean backgrounds, gear is hero. Marshall is secondary but present. Professional but approachable. Face centered, portrait-style framing.',
-        consistencyNotes: 'Gear posts should show Marshall with the product. Use consistent face reference for Marshall. Face must be centered in frame.',
+        sceneDescription: `Marshall actively testing or reviewing tennis equipment in a natural setting. High-end tennis gear prominently displayed. Marshall engaged with the product - testing it, examining it, or using it. Candid moment, not posed. Professional lighting, gear in focus.`,
+        styleGuide: 'Product photography meets lifestyle. Clean backgrounds, gear is hero. Marshall is secondary but present, actively engaging with the product. Professional but approachable. Candid, action-oriented composition.',
+        consistencyNotes: 'Gear posts should show Marshall actively engaging with the product. Use consistent face reference for Marshall. Candid, not posed.',
       };
     }
   }
@@ -86,12 +86,26 @@ export function getImageStrategy(
   
   // LIFESTYLE POSTS: Marshall in lifestyle settings
   if (postType === 'lifestyle' || topicLower.includes('coffee') || topicLower.includes('hotel') || topicLower.includes('travel')) {
+      // Select a random lifestyle scene for variety - all action-oriented, candid moments
+      const lifestyleScenes = [
+        'Marshall walking through a European city, cobblestone streets, tennis bag over shoulder, exploring the area',
+        'Marshall laughing with friends at a tennis tournament, casual moment, stadium in background, genuine interaction',
+        'Marshall having coffee at an outdoor cafe, reading a tennis magazine, people watching, authentic moment',
+        'Marshall exploring a new city neighborhood, tennis racket visible, taking photos, travel aesthetic',
+        'Marshall at a coffee shop, laptop open, tennis tournament on screen, working, authentic work moment',
+        'Marshall walking through tournament grounds, observing players practice, notebook in hand, insider moment',
+        'Marshall at a local market or street, discovering local food, tennis bag visible, travel exploration',
+        'Marshall at a rooftop bar overlooking a tennis venue, golden hour, talking with someone, relaxed atmosphere',
+      ];
+      
+      const randomScene = lifestyleScenes[Math.floor(Math.random() * lifestyleScenes.length)];
+      
       return {
         includeMarshall: true,
         imageType: 'lifestyle-moment',
-        sceneDescription: `Marshall in a luxury lifestyle setting. Coffee shop, hotel lobby, or city walk. Casual but refined, quiet luxury aesthetic. Natural, candid moment. Marshall's face centered in frame, looking at camera.`,
-        styleGuide: 'Lifestyle photography, candid moments, natural lighting, authentic social media style, quiet luxury vibe. Face centered, portrait-style composition.',
-        consistencyNotes: 'Lifestyle posts should include Marshall. Use consistent face reference. Focus on authentic moments. Face must be centered in frame.',
+        sceneDescription: `${randomScene}. Casual but refined, quiet luxury aesthetic. Natural, candid moment. Marshall engaged in the activity, not posing. Environmental portraiture - show Marshall in context doing something authentic.`,
+        styleGuide: 'Lifestyle photography, candid moments, natural lighting, authentic social media style, quiet luxury vibe. Candid, action-oriented composition. Marshall should be doing something, not just looking at camera.',
+        consistencyNotes: 'Lifestyle posts should include Marshall in candid, authentic moments. Use consistent face reference. Focus on Marshall doing things, not posed portraits.',
       };
   }
   
@@ -106,23 +120,35 @@ export function getImageStrategy(
         consistencyNotes: 'Match analysis should show the match, not Marshall. Use action shots or court scenes.',
       };
     } else {
-      // General analysis: Marshall courtside or tournament scene
+      // General analysis: Marshall in candid, natural moments
+      // Select a random analysis scene for variety - all very candid and natural
+      // FIRST SCENE is the French cafe scene the user specifically wants
+      const analysisScenes = [
+        'Marshall sitting at an outdoor French cafe table on a Parisian or Montpellier street, small espresso cup in hand, looking out at the street scene, people walking by, cars passing, completely absorbed in the moment, unaware of camera, natural relaxed posture, candid street photography, NOT looking at camera, NOT posing',
+        'Marshall at a small bistro table, coffee cup in hand, reading something on his phone or newspaper, completely absorbed, head slightly down, unaware of camera, authentic moment, natural body language',
+        'Marshall walking through a European city street, tennis bag slung over shoulder, looking at architecture or signs, natural walking pose, candid street photography, NOT looking at camera',
+        'Marshall sitting on a park bench near tennis courts, coffee beside him, watching players practice in distance, relaxed, natural body language, documentary style, unaware of camera',
+        'Marshall at a local market or street cafe, talking with a local or vendor, genuine interaction, not posed, natural conversation moment, NOT looking at camera',
+      ];
+      
+      const randomScene = analysisScenes[Math.floor(Math.random() * analysisScenes.length)];
+      
       return {
         includeMarshall: true,
         imageType: 'tournament-scene',
-        sceneDescription: `Marshall courtside at a tennis tournament. Professional tennis setting, stadium in background. Marshall observing, notebook or coffee in hand. Authentic insider moment. Marshall's face centered in frame, looking at camera or court.`,
-        styleGuide: 'Documentary-style photography, Marshall as observer, tournament atmosphere, authentic insider perspective. Face centered, portrait-style framing.',
-        consistencyNotes: 'Analysis posts can include Marshall as observer. Use consistent face reference. Face must be centered in frame.',
+        sceneDescription: `${randomScene}. Completely candid, unposed moment. Marshall is NOT aware of the camera, NOT looking at camera, NOT posing. Natural body language, authentic behavior. Documentary street photography style.`,
+        styleGuide: 'Street photography, candid documentary style, natural unposed moments, Marshall unaware of camera, authentic behavior, environmental context clearly visible. NOT staged, NOT posed, NOT looking at camera.',
+        consistencyNotes: 'Analysis posts should show Marshall in completely candid, natural moments. Use consistent face reference. Marshall should appear unaware of camera, not posing.',
       };
     }
   }
   
-  // DEFAULT: Marshall portrait (fallback)
+  // DEFAULT: Marshall in candid moment (fallback)
   return {
     includeMarshall: true,
-    imageType: 'marshall-portrait',
-    sceneDescription: `Marshall, a handsome 33-year-old tennis tour insider. Candid portrait, authentic moment. Face centered in frame, looking directly at camera.`,
-    styleGuide: 'Portrait photography, natural lighting, authentic social media style. Face centered, classic portrait composition.',
-    consistencyNotes: 'Default to Marshall portrait. Use consistent face reference. Face must be centered in frame.',
+    imageType: 'lifestyle-moment',
+    sceneDescription: `Marshall in a candid, authentic moment - walking through a city, having coffee, exploring a location, or engaging in a natural activity. Environmental portraiture, not a centered portrait. Marshall doing something, not posing.`,
+    styleGuide: 'Lifestyle photography, candid moments, natural lighting, authentic social media style. Candid, action-oriented composition. Marshall should be doing something authentic.',
+    consistencyNotes: 'Default to Marshall in candid moment. Use consistent face reference. Candid, not posed portraits.',
   };
 }

@@ -317,9 +317,23 @@ export default function HowItWorksPage() {
                         'Aggregated real data (prevents AI flagging)',
                         'Content opportunity context',
                         'SEO keywords and focus',
-                        '2-agent pipeline: Fact-Checker → Editor (for accuracy)',
+                        '2-agent pipeline: Fact-Checker → Editor (prevents misinformation, improves quality)',
                         'Gear data from database (for gear guides)',
-                        'RSS news data (for tournament recaps)',
+                        'RSS news data (for tournament recaps - prevents fabricated results)',
+                        'Label cleanup (removes embedded "Title:", "Excerpt:", "Content:" labels)',
+                      ]}
+                    />
+
+                    <StepCard
+                      number={5.5}
+                      title="Generate Image"
+                      description="Image generation strategy:"
+                      items={[
+                        'Stock images (Unsplash) for recaps, previews, gear guides, player profiles (free, authentic)',
+                        'AI generation (Replicate/Flux) only when Marshall needs to appear',
+                        'Face consistency (flux-pulid) for Marshall images with varied scenes',
+                        '8 lifestyle scenes, 5 analysis scenes for visual variety',
+                        'Cost savings: 80-90% reduction for non-Marshall posts',
                       ]}
                     />
 
@@ -435,6 +449,13 @@ export default function HowItWorksPage() {
                       data="Racket specs, reviews, pros/cons, affiliate links, best_for recommendations"
                       cache="24 hours"
                     />
+                    <DataSourceCard
+                      name="Stock Images"
+                      status="Active"
+                      source="Unsplash API (free, 50 requests/hour)"
+                      data="Tournament action shots, location photography, product photos"
+                      cache="Used directly (no cache needed)"
+                    />
                   </div>
                 </div>
 
@@ -477,6 +498,21 @@ export default function HowItWorksPage() {
                       title="Topic Variety"
                       limit="No repeats in 3 days"
                       reason="Ensures content diversity"
+                    />
+                    <RuleCard
+                      title="Gear Posts"
+                      limit="45-day minimum"
+                      reason="Infrequent strategy - gear guides are rare, high-value"
+                    />
+                    <RuleCard
+                      title="Tournament Previews"
+                      limit="24 hours - 5 days before"
+                      reason="Not too early, not too late - optimal timing"
+                    />
+                    <RuleCard
+                      title="Tournament Recaps"
+                      limit="Within 48 hours of end"
+                      reason="Fresh while still relevant"
                     />
                   </div>
                 </div>
@@ -560,6 +596,26 @@ export default function HowItWorksPage() {
                       title="Social Post Types"
                       location="lib/social/types.ts"
                       description="Defines 10+ social post types with templates"
+                    />
+                    <TechCard
+                      title="Fact-Checker Agent"
+                      location="lib/ai/fact-checker.ts"
+                      description="Validates content for factual errors, prevents misinformation"
+                    />
+                    <TechCard
+                      title="Editor Agent"
+                      location="lib/ai/editor.ts"
+                      description="Refines content based on fact-checker feedback, maintains Marshall's voice"
+                    />
+                    <TechCard
+                      title="Stock Image Integration"
+                      location="lib/ai/stock-images.ts"
+                      description="Unsplash API for free stock images (recaps, previews, gear guides)"
+                    />
+                    <TechCard
+                      title="Image Generation Strategy"
+                      location="lib/ai/image-strategy.ts"
+                      description="Determines stock vs AI images, scene variety for Marshall posts"
                     />
                   </div>
                 </div>
@@ -647,7 +703,7 @@ export default function HowItWorksPage() {
                     <EndpointCard
                       method="POST"
                       path="/api/posts/generate"
-                      description="Generate blog post using Gemini AI (with or without specific topic)"
+                      description="Generate blog post using Gemini AI. Supports manual post type selection (tournament, player, gear, lifestyle, etc.) or auto-selection from opportunities"
                     />
                     <EndpointCard
                       method="POST"

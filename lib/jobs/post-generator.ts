@@ -29,7 +29,9 @@ export async function generatePostFromOpportunity(
   error?: string;
 }> {
   try {
-    const { publish = false, includeMarshall = true } = options;
+    // Default: let the image strategy decide whether to include Marshall
+    // Only override if explicitly set in options
+    const { publish = false, includeMarshall } = options;
     
     // Get recent posts for context
     const recentPosts = await analyzeRecentPosts(5);
@@ -94,6 +96,13 @@ export async function generatePostFromOpportunity(
       }
     }
     
+    // Check if this is a recap post (needs special handling to avoid making up match results)
+    // Do this FIRST so we can use it in the type mapping
+    let isRecap = opportunity.metadata?.isRecap === true || 
+                  opportunity.topic.toLowerCase().includes('recap') ||
+                  opportunity.topic.toLowerCase().includes('final') ||
+                  opportunity.topic.toLowerCase().includes('champions crowned');
+    
     // Map opportunity type to PostGenerationContext type and database category
     // Database only accepts: 'Gear', 'Travel', 'Analysis', 'Lifestyle'
     let contextType: 'gear' | 'travel' | 'analysis' | 'lifestyle';
@@ -106,11 +115,15 @@ export async function generatePostFromOpportunity(
       'lifestyle': { context: 'lifestyle', category: 'Lifestyle' },
       'tournament': { 
         context: opportunity.topic.toLowerCase().includes('preview') || 
-                 opportunity.topic.toLowerCase().includes('guide')
+                 opportunity.topic.toLowerCase().includes('guide') ||
+                 opportunity.topic.toLowerCase().includes('day update') ||
+                 (opportunity.metadata?.tournament_id && !isRecap) // If it's a tournament post and not a recap, it's likely a preview
           ? 'travel'
           : 'analysis',
         category: opportunity.topic.toLowerCase().includes('preview') || 
-                 opportunity.topic.toLowerCase().includes('guide')
+                 opportunity.topic.toLowerCase().includes('guide') ||
+                 opportunity.topic.toLowerCase().includes('day update') ||
+                 (opportunity.metadata?.tournament_id && !isRecap)
           ? 'Travel'
           : 'Analysis'
       },
@@ -123,12 +136,6 @@ export async function generatePostFromOpportunity(
     const mapping = typeMap[opportunity.type] || { context: 'analysis', category: 'Analysis' };
     contextType = mapping.context;
     dbCategory = mapping.category;
-    
-    // Check if this is a recap post (needs special handling to avoid making up match results)
-    const isRecap = opportunity.metadata?.isRecap === true || 
-                    opportunity.topic.toLowerCase().includes('recap') ||
-                    opportunity.topic.toLowerCase().includes('final') ||
-                    opportunity.topic.toLowerCase().includes('champions crowned');
     
     // Fetch gear data if this is a gear post
     let gearData = null;
@@ -167,24 +174,70 @@ export async function generatePostFromOpportunity(
       tournament,
       recentPosts: recentPostsContext,
       isRecap, // Flag to indicate this is a recap post
-      tournamentNews, // Real news data from RSS feeds for recap posts
-      gearData, // Real gear data from database for gear posts
+      tournamentNews: tournamentNews || undefined, // Real news data from RSS feeds for recap posts (convert null to undefined)
+      gearData: gearData || undefined, // Real gear data from database for gear posts (convert null to undefined)
     };
     
     // Generate post content
     const postContent = await generatePostContent(context);
     
+    // Use explicit postType from Gemini instead of guessing
+    // Map Gemini's postType to our context types
+    const postTypeMap: Record<string, 'gear' | 'travel' | 'analysis' | 'lifestyle'> = {
+      'preview': 'travel',
+      'recap': 'analysis', // Recaps are analysis type but with isRecap flag
+      'guide': contextType === 'gear' ? 'gear' : 'travel',
+      'analysis': 'analysis',
+      'gear': 'gear',
+      'travel': 'travel',
+      'lifestyle': 'lifestyle',
+    };
+    
+    // Override contextType with Gemini's explicit postType
+    const geminiPostType = postContent.postType;
+    const mappedType = postTypeMap[geminiPostType] || contextType;
+    
+    // If Gemini says it's a recap, ensure isRecap is true
+    if (geminiPostType === 'recap') {
+      isRecap = true;
+    }
+    
+    // If Gemini says it's a preview, ensure it's travel type
+    if (geminiPostType === 'preview') {
+      contextType = 'travel';
+      dbCategory = 'Travel';
+    } else if (mappedType !== contextType) {
+      // Use Gemini's determination if it differs
+      contextType = mappedType;
+      dbCategory = mappedType.charAt(0).toUpperCase() + mappedType.slice(1) as 'Gear' | 'Travel' | 'Analysis' | 'Lifestyle';
+    }
+    
+    console.log(`[Post Generator] Gemini determined postType: ${geminiPostType}, mapped to contextType: ${contextType}`);
+    
     // Generate image (strategy will auto-determine if Marshall should be included)
-    const imageUrl = await generatePostImage({
-      postType: contextType,
+    // Use the final contextType (which may have been updated by Gemini's postType)
+    const imageContext: any = {
+      postType: contextType, // Use the final contextType (may have been updated by Gemini)
       topic: opportunity.topic,
       tournament: context.tournament ? {
         name: context.tournament.name,
         location: context.tournament.location,
       } : undefined,
-      includeMarshall, // Can be overridden by strategy
       isRecap, // Pass recap flag for strategy
-    });
+    };
+    
+    // Only pass includeMarshall if it's explicitly set AND it's not a recap post
+    // Recap posts should never include Marshall (strategy will handle this)
+    if (!isRecap && includeMarshall !== undefined) {
+      imageContext.includeMarshall = includeMarshall;
+      console.log(`[Post Generator] Using explicit includeMarshall: ${includeMarshall}`);
+    } else if (isRecap) {
+      console.log(`[Post Generator] Recap post detected - letting strategy decide (should exclude Marshall)`);
+    } else {
+      console.log(`[Post Generator] Letting image strategy decide whether to include Marshall`);
+    }
+    
+    const imageUrl = await generatePostImage(imageContext);
     
     // Create slug from title
     const slug = postContent.title
@@ -193,28 +246,36 @@ export async function generatePostFromOpportunity(
       .replace(/^-+|-+$/g, '')
       .slice(0, 100);
     
+    // Build post data object
+    const postData = {
+      slug,
+      title: postContent.title,
+      excerpt: postContent.excerpt,
+      content: postContent.content,
+      category: dbCategory,
+      featured_image: imageUrl,
+      meta_title: postContent.metaTitle || postContent.title,
+      meta_description: postContent.metaDescription || postContent.excerpt,
+      focus_keyword: postContent.focusKeyword || '',
+      keywords: postContent.keywords || [],
+      tags: postContent.tags || [],
+      author_name: 'Marshall',
+      reading_time: Math.ceil(postContent.content.split(/\s+/).length / 200),
+      published: publish,
+      published_at: publish ? new Date().toISOString() : null,
+      affiliate_links: [],
+    };
+    
+    // LOG: Full post JSON
+    console.log('\n========== POST JSON ==========');
+    console.log(JSON.stringify(postData, null, 2));
+    console.log('===============================\n');
+    
     // Save to Supabase
     const supabase = createAdminSupabase();
     const { data: post, error: dbError } = await supabase
       .from('posts')
-      .insert({
-        slug,
-        title: postContent.title,
-        excerpt: postContent.excerpt,
-        content: postContent.content,
-        category: dbCategory,
-        featured_image: imageUrl,
-        meta_title: postContent.metaTitle || postContent.title,
-        meta_description: postContent.metaDescription || postContent.excerpt,
-        focus_keyword: postContent.focusKeyword || '',
-        keywords: postContent.keywords || [],
-        tags: postContent.tags || [],
-        author_name: 'Marshall',
-        reading_time: Math.ceil(postContent.content.split(/\s+/).length / 200),
-        published: publish,
-        published_at: publish ? new Date().toISOString() : null,
-        affiliate_links: [],
-      })
+      .insert(postData)
       .select()
       .single();
     

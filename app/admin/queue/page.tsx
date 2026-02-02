@@ -349,8 +349,23 @@ export default function PostQueuePage() {
                 key={post.id}
                 className="bg-white rounded-lg shadow border border-gray-200 p-6 hover:shadow-md transition-shadow"
               >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
+                <div className="flex items-start justify-between gap-4">
+                  {/* Featured Image */}
+                  {post.featured_image && (
+                    <div className="flex-shrink-0">
+                      <img
+                        src={post.featured_image}
+                        alt={post.title}
+                        className="w-32 h-32 object-cover rounded-lg border border-gray-200"
+                        onError={(e) => {
+                          // Hide image if it fails to load
+                          (e.target as HTMLImageElement).style.display = 'none';
+                        }}
+                      />
+                    </div>
+                  )}
+                  
+                  <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="text-xl font-bold text-gray-900">{post.title}</h3>
                       <span className={`px-2 py-1 rounded text-xs font-semibold ${
@@ -379,7 +394,7 @@ export default function PostQueuePage() {
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 ml-4">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     <button
                       onClick={() => handleViewPost(post)}
                       className="px-3 py-1.5 text-sm bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
@@ -505,6 +520,21 @@ export default function PostQueuePage() {
                   </div>
                 ) : (
                   <div className="max-w-none">
+                    {/* Featured Image */}
+                    {selectedPost.featured_image && (
+                      <div className="mb-6">
+                        <img
+                          src={selectedPost.featured_image}
+                          alt={selectedPost.title}
+                          className="w-full h-auto rounded-lg border border-gray-200"
+                          onError={(e) => {
+                            // Hide image if it fails to load
+                            (e.target as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    )}
+                    
                     <div className="mb-6 pb-6 border-b border-gray-200">
                       <p className="text-lg text-gray-600 italic">{selectedPost.excerpt}</p>
                       <div className="flex items-center gap-4 mt-4 text-sm text-gray-500">

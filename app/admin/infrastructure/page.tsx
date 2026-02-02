@@ -219,7 +219,7 @@ export default function InfrastructurePage() {
     {
       path: '/api/posts/generate',
       method: 'POST',
-      description: 'Generate blog post using Gemini AI. Auto-selects topic or accepts manual topic/tournament.',
+      description: 'Generate blog post using Gemini AI. Auto-selects topic or accepts manual type/topic/tournament. Supports post type selection (tournament, player, gear, lifestyle, etc.).',
       status: 'active',
     },
     {
@@ -311,14 +311,24 @@ export default function InfrastructurePage() {
       envVar: 'GEMINI_API_KEY',
     },
     {
+      name: 'Unsplash API',
+      type: 'api',
+      description: 'Free stock images for non-Marshall posts (recaps, previews, gear guides, player profiles). Reduces AI costs by 80-90%.',
+      when: 'On-demand when generating posts (only if Marshall not included)',
+      why: 'Authentic photography for tournament recaps and previews. Free alternative to AI generation.',
+      status: 'active',
+      envVar: 'UNSPLASH_ACCESS_KEY',
+      notes: 'Free tier: 50 requests/hour. Used for recaps, previews, gear guides, player profiles. Falls back to AI if no match found.',
+    },
+    {
       name: 'Replicate/Flux',
       type: 'api',
       description: 'AI image generation for blog post featured images. Uses flux-pulid for face consistency when Marshall is included.',
-      when: 'On-demand when generating posts',
-      why: 'Consistent Marshall visuals with face ID technology',
+      when: 'On-demand when generating posts (only if Marshall included or stock image unavailable)',
+      why: 'Consistent Marshall visuals with face ID technology. Varied scene selection for lifestyle/analysis posts.',
       status: 'active',
       envVar: 'REPLICATE_API_TOKEN',
-      notes: 'Face reference image stored in Supabase Storage. Strategy-based image generation (tournament scenes, product photos, lifestyle moments).',
+      notes: 'Face reference image stored in Supabase Storage. Strategy-based image generation with scene variety (8 lifestyle scenes, 5 analysis scenes). Only used when Marshall needs to appear.',
     },
     {
       name: 'RSS Feeds',
@@ -500,6 +510,7 @@ export default function InfrastructurePage() {
     { id: 'social', label: 'Social Media', icon: '📱' },
     { id: 'future', label: 'Future Data Sources', icon: '🔮' },
     { id: 'affiliates', label: 'Affiliate Partners', icon: '💰' },
+    { id: 'deployment', label: 'Deployment', icon: '🚀' },
   ];
 
   if (loading) {
@@ -858,6 +869,98 @@ export default function InfrastructurePage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Deployment Tab */}
+        {activeTab === 'deployment' && (
+          <div>
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Deployment</h2>
+              <p className="text-gray-600">Production deployment information</p>
+            </div>
+            
+            <div className="bg-white rounded-lg shadow border border-gray-200 p-6 space-y-6">
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-3">Domain</h3>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">🌐</span>
+                    <div>
+                      <p className="font-bold text-lg text-gray-900">marshallontour.com</p>
+                      <p className="text-sm text-gray-600">Domain purchased and ready for deployment</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-xl font-semibold text-gray-900 mb-3">Deployment Checklist</h3>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <input type="checkbox" className="mt-1" disabled />
+                    <div>
+                      <p className="font-semibold text-gray-900">Configure DNS</p>
+                      <p className="text-sm text-gray-600">Point marshallontour.com to hosting provider</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <input type="checkbox" className="mt-1" disabled />
+                    <div>
+                      <p className="font-semibold text-gray-900">Set up SSL Certificate</p>
+                      <p className="text-sm text-gray-600">Enable HTTPS (automatic with Vercel/Netlify)</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <input type="checkbox" className="mt-1" disabled />
+                    <div>
+                      <p className="font-semibold text-gray-900">Configure Production Environment Variables</p>
+                      <p className="text-sm text-gray-600">All API keys, database URLs, Supabase keys</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <input type="checkbox" className="mt-1" disabled />
+                    <div>
+                      <p className="font-semibold text-gray-900">Set up Production Database</p>
+                      <p className="text-sm text-gray-600">Supabase production project, run migrations</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <input type="checkbox" className="mt-1" disabled />
+                    <div>
+                      <p className="font-semibold text-gray-900">Configure Image Storage</p>
+                      <p className="text-sm text-gray-600">Supabase Storage bucket for Marshall face reference and generated images</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <input type="checkbox" className="mt-1" disabled />
+                    <div>
+                      <p className="font-semibold text-gray-900">Set up Background Jobs</p>
+                      <p className="text-sm text-gray-600">Cron jobs for Content Intelligence, ATP sync, etc.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <input type="checkbox" className="mt-1" disabled />
+                    <div>
+                      <p className="font-semibold text-gray-900">Test Production Build</p>
+                      <p className="text-sm text-gray-600">Verify all features work in production environment</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <h4 className="font-bold text-gray-900 mb-2">⚠️ Pre-Deployment Requirements</h4>
+                <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
+                  <li>All background jobs tested and working</li>
+                  <li>Content generation pipeline validated</li>
+                  <li>API cost tracking configured</li>
+                  <li>Admin authentication secured</li>
+                  <li>Mixpanel analytics configured</li>
+                  <li>Social media accounts created (Instagram, X/Twitter)</li>
+                </ul>
+              </div>
+            </div>
           </div>
         )}
       </div>

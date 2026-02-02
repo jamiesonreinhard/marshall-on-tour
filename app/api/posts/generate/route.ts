@@ -3,6 +3,8 @@ import { createAdminSupabase } from '@/lib/supabase/server';
 import { generatePostContent } from '@/lib/ai/gemini';
 import { generatePostImage } from '@/lib/ai/images';
 import { getAllContentOpportunities, analyzeRecentPosts } from '@/lib/data/processor';
+import { generatePostFromOpportunity } from '@/lib/jobs/post-generator';
+import { ContentOpportunity } from '@/lib/jobs/scoring';
 import { revalidatePath } from 'next/cache';
 
 /**
@@ -32,6 +34,7 @@ export async function POST(request: NextRequest) {
       newsItemId,
       publish = false,
       includeMarshall = true,
+      category, // For gear posts: 'racket', 'clothing', 'accessory'
     } = body;
 
     // Get recent posts for context (needed for both paths)
@@ -41,15 +44,130 @@ export async function POST(request: NextRequest) {
       category: p.category,
     }));
 
-    // Get content opportunity if no topic provided
-    let context;
-    if (topic && type) {
-      // Use provided topic
-      context = {
-        type,
-        topic,
-        recentPosts: recentPostsContext,
+    // If type and topic are provided, create a ContentOpportunity and use post-generator
+    // This ensures consistent handling with the content intelligence job
+    if (type && type !== 'auto' && (topic || type === 'gear')) {
+      // Create a ContentOpportunity from the manual selection
+      const opportunityId = `manual-${Date.now()}-${Math.random()}`;
+      
+      // Generate topic if not provided
+      let finalTopic = topic;
+      if (!finalTopic) {
+        switch (type) {
+          case 'tournament':
+            finalTopic = 'Upcoming Tournament Preview';
+            break;
+          case 'match':
+            finalTopic = 'Match Analysis';
+            break;
+          case 'player':
+            finalTopic = 'Rising Star: Up-and-Coming Player';
+            break;
+          case 'gear':
+            if (category === 'racket') {
+              finalTopic = 'Best Tennis Rackets for 2026: A Complete Guide';
+            } else if (category === 'clothing') {
+              finalTopic = 'Best Tennis Apparel for 2026: Shorts, Shirts, and More';
+            } else if (category === 'accessory') {
+              finalTopic = 'Essential Tennis Accessories: Bags, Grips, and More';
+            } else {
+              finalTopic = 'Best Tennis Gear for 2026: A Complete Guide';
+            }
+            break;
+          case 'lifestyle':
+            finalTopic = 'Tennis Travel Guide';
+            break;
+          case 'news':
+            finalTopic = 'Tennis News Analysis';
+            break;
+          case 'blast-from-past':
+            finalTopic = 'Blast from the Past: Tennis Legends';
+            break;
+          default:
+            finalTopic = 'Tennis Content';
+        }
+      }
+      
+      // Get tournament data if tournamentId provided
+      let tournamentMetadata: any = {};
+      if (tournamentId) {
+        const supabase = createAdminSupabase();
+        const { data: tournamentData } = await supabase
+          .from('atp_calendar')
+          .select('*')
+          .eq('id', tournamentId)
+          .single();
+        
+        if (tournamentData) {
+          tournamentMetadata.tournament_id = tournamentData.id;
+          tournamentMetadata.isRecap = finalTopic.toLowerCase().includes('recap') || 
+                                       finalTopic.toLowerCase().includes('final');
+        }
+      }
+      
+      // Add gear metadata
+      if (type === 'gear' && category) {
+        tournamentMetadata.guide_type = category;
+      }
+      
+      // Create opportunity object
+      const opportunity: ContentOpportunity = {
+        id: opportunityId,
+        type: type as ContentOpportunity['type'],
+        topic: finalTopic,
+        description: `Manual post generation: ${finalTopic}`,
+        timeliness: 20,
+        affiliatePotential: type === 'gear' || type === 'lifestyle' ? 20 : 10,
+        seoValue: 15,
+        contentVariety: 10,
+        socialEngagement: 8,
+        totalScore: 73, // High enough to pass any filters
+        metadata: tournamentMetadata,
       };
+      
+      // Use post-generator to handle the opportunity
+      const result = await generatePostFromOpportunity(opportunity, {
+        publish,
+        includeMarshall,
+      });
+      
+      if (!result.success) {
+        return NextResponse.json(
+          { error: 'Failed to generate post', details: result.error },
+          { status: 500 }
+        );
+      }
+      
+      // Revalidate blog pages if published
+      if (publish && result.postId) {
+        const supabase = createAdminSupabase();
+        const { data: post } = await supabase
+          .from('posts')
+          .select('slug')
+          .eq('id', result.postId)
+          .single();
+        
+        if (post) {
+          revalidatePath('/blog');
+          revalidatePath(`/blog/${post.slug}`);
+          revalidatePath('/');
+        }
+      }
+      
+      return NextResponse.json({
+        success: true,
+        post: {
+          id: result.postId,
+          published: publish,
+        },
+        message: publish ? 'Post published successfully' : 'Post saved as draft',
+      });
+    }
+    
+    // Auto-select from opportunities (original behavior)
+    let context;
+    if (false) {
+      // This branch is now unreachable but kept for structure
     } else {
       // Auto-select from opportunities
       const opportunities = await getAllContentOpportunities();

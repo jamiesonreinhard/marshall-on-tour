@@ -92,7 +92,11 @@ export async function editPost(
     }
 
     // Parse the edited content (should be just the markdown content)
-    const editedContent = editedText.trim();
+    let editedContent = editedText.trim();
+    
+    // CRITICAL: Apply the same label cleanup that we do in gemini.ts
+    // Even if the editor was instructed to remove labels, do a final cleanup pass
+    editedContent = cleanupEmbeddedLabels(editedContent);
 
     return {
       success: true,
@@ -189,10 +193,48 @@ EDITING INSTRUCTIONS:
 7. Keep the same structure and flow
 8. Only change what needs fixing - don't rewrite unnecessarily
 
+CRITICAL FORMATTING FIXES:
+- If the content starts with "Title:", "Excerpt:", or "Content:" labels, REMOVE them completely
+- The title and excerpt are already stored separately - they should NOT appear in the content
+- The content should start directly with the blog post text, not with metadata labels
+- Remove any text that appears before the actual blog post content begins
+
 OUTPUT FORMAT:
-Return ONLY the edited markdown content. No explanations, no JSON, just the corrected blog post content in markdown format.
+Return ONLY the edited markdown content. No explanations, no JSON, no field labels (Title:, Excerpt:, Content:), just the corrected blog post content in markdown format.
 
 CRITICAL: The edited version should sound like Marshall wrote it, just more accurate.`;
 
   return prompt;
+}
+
+/**
+ * Clean up embedded labels from content (same logic as gemini.ts)
+ * This is a safety net in case the editor didn't fully remove them
+ */
+function cleanupEmbeddedLabels(content: string): string {
+  // Pattern 1: "Title: ... Excerpt: ... Content: ..." 
+  const titleExcerptContentPattern = content.match(/^(?:Title|title):\s*[^\n]+\s+(?:Excerpt|excerpt):\s*[^\n]+(?:\s+|\n+)(?:Content|content):\s*([\s\S]+)$/i);
+  if (titleExcerptContentPattern) {
+    return titleExcerptContentPattern[1].trim();
+  }
+  
+  // Pattern 2: All on same line
+  const sameLinePattern = content.match(/^(?:Title|title):\s*[^\n]+\s+(?:Excerpt|excerpt):\s*[^\n]+\s+(?:Content|content):\s*([\s\S]+)$/i);
+  if (sameLinePattern) {
+    return sameLinePattern[1].trim();
+  }
+  
+  // Pattern 3: Just "Content: ..."
+  const contentOnlyPattern = content.match(/^(?:Content|content):\s*([\s\S]+)$/i);
+  if (contentOnlyPattern) {
+    return contentOnlyPattern[1].trim();
+  }
+  
+  // Fallback: aggressive cleanup
+  return content
+    .replace(/^(?:Title|title):\s*[^\n]+?(?:\s+(?:Excerpt|excerpt|Content|content):|\n|$)/i, '')
+    .replace(/(?:Excerpt|excerpt):\s*[^\n]+?(?:\s+(?:Content|content):|\n|$)/gi, '')
+    .replace(/^(?:Content|content):\s*/i, '')
+    .replace(/\n(?:Title|title|Excerpt|excerpt|Content|content):\s*[^\n]*(?:\n|$)/gi, '\n')
+    .trim();
 }

@@ -64,6 +64,7 @@ export async function generatePostContent(context: PostGenerationContext): Promi
   title: string;
   excerpt: string;
   content: string;
+  postType: 'preview' | 'recap' | 'guide' | 'analysis' | 'gear' | 'travel' | 'lifestyle';
   metaTitle?: string;
   metaDescription?: string;
   focusKeyword?: string;
@@ -492,15 +493,33 @@ ${recentPosts.map(p => `- ${p.title} (${p.category})`).join('\n')}
 Return ONLY valid JSON, no markdown formatting, no code blocks, no explanations. Just the JSON object:
 
 {
-  "title": "Compelling, SEO-friendly title (60-70 characters)",
+  "title": "Compelling, SEO-friendly title (60-70 characters). CRITICAL: Do NOT include the tagline 'Serve First. Travel Always.' in the title. The title should be just the post title, nothing else.",
   "excerpt": "Engaging excerpt (150-160 characters)",
   "content": "Full blog post content in MARKDOWN format. CRITICAL: Use proper line breaks and spacing! Use \\n\\n (double newlines) between paragraphs, \\n\\n before and after headings, \\n\\n before and after lists. Format example:\\n\\n## Main Heading\\n\\nParagraph text here with proper spacing.\\n\\n### Subheading\\n\\nMore paragraph text.\\n\\n- List item one\\n- List item two\\n\\nAnother paragraph after the list. Use ## for main headings, ### for subheadings, regular paragraphs, - for lists, [text](url) for links. Write naturally - aim for 600-1200 words (enough to be comprehensive but not overwhelming). Quality and engagement matter more than length. Include natural affiliate link opportunities marked as [AFF:Product Name]. CRITICAL: If you approach token limits, ensure you close all JSON strings and the object properly - it's better to have a complete shorter post than a truncated longer one.",
+  "postType": "preview|recap|guide|analysis|gear|travel|lifestyle",
   "metaTitle": "SEO meta title (include focus keyword)",
   "metaDescription": "SEO meta description (150-160 characters)",
   "focusKeyword": "Primary SEO keyword",
   "keywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
   "tags": ["tag1", "tag2", "tag3", "tag4"]
 }
+
+CRITICAL: The "postType" field is REQUIRED and must be one of:
+- "preview" - Tournament preview (written before tournament starts, focuses on location, travel, what to expect)
+- "recap" - Tournament recap (written after tournament ends, summarizes results and highlights)
+- "guide" - Travel guide or gear guide (how-to, recommendations, best practices)
+- "analysis" - Match analysis, player analysis, tactical breakdown
+- "gear" - Gear review or gear-focused content
+- "travel" - Travel-focused content (location guides, travel tips)
+- "lifestyle" - Lifestyle content (coffee, hotels, culture, personal stories)
+
+Determine the postType based on:
+- The topic and context provided
+- Whether it's a preview (before tournament) or recap (after tournament)
+- The type of content being written
+- The focus of the post (travel, gear, analysis, etc.)
+
+Be explicit and accurate - this determines image generation and categorization.
 
 CRITICAL MARKDOWN FORMATTING RULES:
 - ALWAYS use \\n\\n (double newline) between paragraphs
@@ -543,6 +562,7 @@ function parseGeneratedContent(
   title: string;
   excerpt: string;
   content: string;
+  postType: 'preview' | 'recap' | 'guide' | 'analysis' | 'gear' | 'travel' | 'lifestyle';
   metaTitle?: string;
   metaDescription?: string;
   focusKeyword?: string;
@@ -562,6 +582,83 @@ function parseGeneratedContent(
     // Handle ``` at end
     jsonText = jsonText.replace(/\s*```\s*$/i, '');
     jsonText = jsonText.trim();
+    
+    // Check if Gemini returned labeled text instead of JSON (e.g., "Title: ... Excerpt: ... Content: ...")
+    // This happens sometimes when the model doesn't follow JSON format instructions
+    const hasLabeledFormat = /^(?:Title|title|Excerpt|excerpt):/im.test(jsonText);
+    if (hasLabeledFormat) {
+      console.log('⚠️ Detected labeled format instead of JSON, converting...');
+      
+      // Split by lines and look for field labels
+      const lines = jsonText.split('\n');
+      let currentField: 'title' | 'excerpt' | 'content' | null = null;
+      const extracted: { title: string; excerpt: string; content: string } = {
+        title: context.topic,
+        excerpt: '',
+        content: '',
+      };
+      
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        
+        // Check if this line starts a new field
+        if (/^(?:Title|title):\s*/i.test(line)) {
+          currentField = 'title';
+          extracted.title = line.replace(/^(?:Title|title):\s*/i, '').trim();
+        } else if (/^(?:Excerpt|excerpt):\s*/i.test(line)) {
+          currentField = 'excerpt';
+          extracted.excerpt = line.replace(/^(?:Excerpt|excerpt):\s*/i, '').trim();
+        } else if (/^(?:Content|content):\s*/i.test(line)) {
+          currentField = 'content';
+          extracted.content = line.replace(/^(?:Content|content):\s*/i, '').trim();
+        } else if (currentField && line.trim()) {
+          // Continue appending to current field
+          if (extracted[currentField]) {
+            extracted[currentField] += '\n' + line;
+          } else {
+            extracted[currentField] = line;
+          }
+        }
+      }
+      
+      // Clean up extracted fields
+      extracted.title = extracted.title.trim();
+      extracted.excerpt = extracted.excerpt.trim();
+      extracted.content = extracted.content.trim();
+      
+      // If we got content, use it (even if not perfect JSON)
+      if (extracted.content) {
+        console.log('✅ Extracted content from labeled format');
+        // Clean up content - remove any stray field labels that might have appeared
+        extracted.content = extracted.content
+          .replace(/^(?:Title|title|Excerpt|excerpt|Content|content|Meta|meta):\s*/gim, '')
+          .trim();
+        
+        // Infer postType from context for fallback
+        let fallbackPostType: 'preview' | 'recap' | 'guide' | 'analysis' | 'gear' | 'travel' | 'lifestyle' = 'analysis';
+        if (context.isRecap) {
+          fallbackPostType = 'recap';
+        } else if (context.type === 'gear') {
+          fallbackPostType = 'gear';
+        } else if (context.type === 'travel') {
+          fallbackPostType = 'preview';
+        } else if (context.type === 'lifestyle') {
+          fallbackPostType = 'lifestyle';
+        }
+        
+        return {
+          title: extracted.title || context.topic,
+          excerpt: extracted.excerpt || '',
+          content: extracted.content,
+          postType: fallbackPostType,
+          metaTitle: undefined,
+          metaDescription: undefined,
+          focusKeyword: undefined,
+          keywords: [],
+          tags: [],
+        };
+      }
+    }
     
     // Try multiple strategies to extract JSON
     
@@ -735,6 +832,97 @@ function parseGeneratedContent(
         throw new Error(`Content field is not a string, got: ${typeof content}`);
       }
       
+      // CRITICAL: Remove field labels that might be embedded in the content
+      // Sometimes Gemini includes "Title:", "Excerpt:", "Content:" labels in the content field itself
+      // This happens when the model doesn't follow JSON format and includes labels in the content string
+      // The title and excerpt should NEVER be in the content - they're separate fields!
+      
+      // Log original content for debugging
+      const originalContentLength = content.length;
+      const originalContentStart = content.substring(0, 200);
+      
+      // Pattern 1: "Title: ... Excerpt: ... Content: ..." 
+      // Can be all on same line, or Title/Excerpt on one line, Content on next
+      // Most common: "Title: ... Excerpt: ...\nContent: ..."
+      const titleExcerptContentPattern = content.match(/^(?:Title|title):\s*[^\n]+\s+(?:Excerpt|excerpt):\s*[^\n]+(?:\s+|\n+)(?:Content|content):\s*([\s\S]+)$/i);
+      if (titleExcerptContentPattern) {
+        content = titleExcerptContentPattern[1].trim();
+        console.log('✅ Removed Title/Excerpt/Content labels (title+excerpt+content pattern)');
+      } else {
+        // Pattern 1b: All on same line with spaces
+        const sameLinePattern = content.match(/^(?:Title|title):\s*[^\n]+\s+(?:Excerpt|excerpt):\s*[^\n]+\s+(?:Content|content):\s*([\s\S]+)$/i);
+        if (sameLinePattern) {
+          content = sameLinePattern[1].trim();
+          console.log('✅ Removed Title/Excerpt/Content labels (same line pattern)');
+        } else {
+          // Pattern 1c: Compact (no spaces between labels)
+          const compactPattern = content.match(/^(?:Title|title):\s*[^\n]+(?:Excerpt|excerpt):\s*[^\n]+(?:Content|content):\s*([\s\S]+)$/i);
+          if (compactPattern) {
+            content = compactPattern[1].trim();
+            console.log('✅ Removed Title/Excerpt/Content labels (compact pattern)');
+          } else {
+            // Pattern 2: "Title: ...\nExcerpt: ...\nContent: ..." split across lines
+            const multiLinePattern = content.match(/^(?:Title|title):\s*[^\n]+\n(?:Excerpt|excerpt):\s*[^\n]+\n(?:Content|content):\s*([\s\S]+)$/i);
+            if (multiLinePattern) {
+              content = multiLinePattern[1].trim();
+              console.log('✅ Removed Title/Excerpt/Content labels (multi-line pattern)');
+            } else {
+              // Pattern 3: Just "Content: ..." at the start
+              const contentOnlyPattern = content.match(/^(?:Content|content):\s*([\s\S]+)$/i);
+              if (contentOnlyPattern) {
+                content = contentOnlyPattern[1].trim();
+                console.log('✅ Removed Content label');
+              } else {
+                // Fallback: aggressive cleanup - remove any labels and their values
+                const beforeCleanup = content;
+                content = content
+                  // Remove "Title: ..." at the start (everything until Excerpt or Content or newline)
+                  .replace(/^(?:Title|title):\s*[^\n]+?(?:\s+(?:Excerpt|excerpt|Content|content):|\n|$)/i, '')
+                  // Remove "Excerpt: ..." (everything until Content or newline)
+                  .replace(/(?:Excerpt|excerpt):\s*[^\n]+?(?:\s+(?:Content|content):|\n|$)/gi, '')
+                  // Remove "Content:" label at the start
+                  .replace(/^(?:Content|content):\s*/i, '')
+                  // Remove any remaining labels that might appear anywhere in the content
+                  .replace(/\n(?:Title|title|Excerpt|excerpt|Content|content):\s*[^\n]*(?:\n|$)/gi, '\n')
+                  .trim();
+                
+                if (content !== beforeCleanup) {
+                  console.log('✅ Removed labels using fallback cleanup');
+                }
+              }
+            }
+          }
+        }
+      }
+      
+      // Final safety check: if content still starts with something that looks like a title/excerpt, remove it
+      // This catches cases where the pattern matching didn't work perfectly
+      if (/^(?:Title|title|Excerpt|excerpt|Content|content):/i.test(content)) {
+        console.warn('⚠️ Content still contains labels after cleanup, applying aggressive removal...');
+        console.warn('Original content start:', originalContentStart);
+        console.warn('Current content start:', content.substring(0, 200));
+        
+        // Find where actual content starts (after all labels)
+        const contentStartMatch = content.match(/^(?:Title|title):\s*[^\n]+\s+(?:Excerpt|excerpt):\s*[^\n]+\s+(?:Content|content):\s*/i);
+        if (contentStartMatch) {
+          content = content.substring(contentStartMatch[0].length).trim();
+          console.log('✅ Removed labels using content start match');
+        } else {
+          // Last resort: remove everything up to the first paragraph that doesn't look like a label
+          const lastResortMatch = content.match(/^(?:Title|title|Excerpt|excerpt|Content|content):\s*[^\n]+(?:\s+[^\n]+)?\s*/i);
+          if (lastResortMatch) {
+            content = content.substring(lastResortMatch[0].length).trim();
+            console.log('✅ Removed labels using last resort match');
+          }
+        }
+      }
+      
+      // Log final result
+      if (content.length !== originalContentLength) {
+        console.log(`📝 Content cleaned: ${originalContentLength} → ${content.length} characters`);
+        console.log(`📝 Final content start: ${content.substring(0, 100)}...`);
+      }
+      
       // Replace escaped newlines with actual newlines
       content = content.replace(/\\n/g, '\n');
       
@@ -765,11 +953,49 @@ function parseGeneratedContent(
         contentPreview: content.substring(0, 100),
       });
       
+      // Extract postType from parsed JSON, with fallback logic
+      let postType: 'preview' | 'recap' | 'guide' | 'analysis' | 'gear' | 'travel' | 'lifestyle' = 'analysis';
+      
+      if (parsed.postType) {
+        const validPostTypes = ['preview', 'recap', 'guide', 'analysis', 'gear', 'travel', 'lifestyle'];
+        if (validPostTypes.includes(parsed.postType.toLowerCase())) {
+          postType = parsed.postType.toLowerCase() as typeof postType;
+        }
+      } else {
+        // Fallback: infer from context if postType not provided
+        if (context.isRecap) {
+          postType = 'recap';
+        } else if (context.type === 'gear') {
+          postType = 'gear';
+        } else if (context.type === 'travel') {
+          postType = 'preview'; // Tournament previews are travel type
+        } else if (context.type === 'lifestyle') {
+          postType = 'lifestyle';
+        } else {
+          postType = 'analysis';
+        }
+      }
+      
+      // Clean up title - remove tagline if it somehow got included
+      let cleanTitle = parsed.title || context.topic;
+      cleanTitle = cleanTitle.replace(/\s*\(Serve First\. Travel Always\.\)\s*/gi, '');
+      cleanTitle = cleanTitle.replace(/\s*Serve First\. Travel Always\.\s*/gi, '');
+      cleanTitle = cleanTitle.trim();
+      
+      // Clean up metaTitle too if it exists
+      let cleanMetaTitle = parsed.metaTitle;
+      if (cleanMetaTitle) {
+        cleanMetaTitle = cleanMetaTitle.replace(/\s*\(Serve First\. Travel Always\.\)\s*/gi, '');
+        cleanMetaTitle = cleanMetaTitle.replace(/\s*Serve First\. Travel Always\.\s*/gi, '');
+        cleanMetaTitle = cleanMetaTitle.trim();
+      }
+      
       return {
-        title: parsed.title || context.topic,
+        title: cleanTitle,
         excerpt: parsed.excerpt || '',
         content: content, // This should be just the markdown string
-        metaTitle: parsed.metaTitle,
+        postType,
+        metaTitle: cleanMetaTitle,
         metaDescription: parsed.metaDescription,
         focusKeyword: parsed.focusKeyword,
         keywords: parsed.keywords || [],

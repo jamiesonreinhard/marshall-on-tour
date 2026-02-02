@@ -55,6 +55,10 @@ export async function factCheckPost(
   // Universal checks (apply to all types)
   issues.push(...checkUniversalIssues(content, context));
   
+  // CRITICAL: Check for embedded field labels (Title:, Excerpt:, Content:)
+  // These should NEVER be in the content - they're separate fields!
+  issues.push(...checkForEmbeddedLabels(content));
+  
   return {
     hasIssues: issues.length > 0,
     issues,
@@ -305,6 +309,45 @@ function checkClaimsAgainstNews(
         suggestion: 'Verify against news sources or remove specific score if unverifiable',
       });
     }
+  }
+  
+  return issues;
+}
+
+/**
+ * Check for embedded field labels (Title:, Excerpt:, Content:)
+ * These should NEVER appear in the blog post content - they're metadata fields!
+ */
+function checkForEmbeddedLabels(content: string): FactCheckIssue[] {
+  const issues: FactCheckIssue[] = [];
+  const contentStart = content.substring(0, 500).toLowerCase(); // Check first 500 chars
+  
+  // Check for "Title:" at the start
+  if (/^(?:title|excerpt|content):/i.test(content.trim())) {
+    const labelMatch = content.match(/^(?:Title|title|Excerpt|excerpt|Content|content):\s*/i);
+    if (labelMatch) {
+      issues.push({
+        type: 'factual_error',
+        severity: 'high',
+        originalText: content.substring(0, Math.min(200, content.length)),
+        issue: 'Content contains embedded field labels (Title:, Excerpt:, or Content:). These are metadata fields and should NOT appear in the blog post body. The title and excerpt are already displayed separately at the top of the post.',
+        suggestion: 'Remove all field labels (Title:, Excerpt:, Content:) and any text that appears before the actual blog post content begins. The content should start directly with the blog post text, not with metadata labels.',
+        context: 'The content field should only contain the blog post body text, not the title or excerpt which are stored in separate fields.',
+      });
+    }
+  }
+  
+  // Check for "Title: ... Excerpt: ... Content: ..." pattern
+  const titleExcerptContentPattern = /^(?:Title|title):\s*[^\n]+\s+(?:Excerpt|excerpt):\s*[^\n]+(?:\s+|\n+)(?:Content|content):/i;
+  if (titleExcerptContentPattern.test(content)) {
+    issues.push({
+      type: 'factual_error',
+      severity: 'high',
+      originalText: content.substring(0, Math.min(300, content.length)),
+      issue: 'Content contains embedded Title, Excerpt, and Content labels. The title and excerpt are already stored in separate fields and displayed at the top of the post. Only the blog post body text should be in the content field.',
+      suggestion: 'Remove everything before the actual blog post content starts. Delete "Title:", "Excerpt:", and "Content:" labels and any text associated with them. The content should begin directly with the blog post text.',
+      context: 'The content field should only contain the blog post body, not metadata labels.',
+    });
   }
   
   return issues;
