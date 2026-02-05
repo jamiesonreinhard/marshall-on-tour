@@ -86,12 +86,14 @@ export async function handleAnalysisPost(
           dataSources.push(`Matches: ${matchData.length} found`);
         }
         
-        // Get weather for tournament location
-        const weatherResult = await getTournamentWeather(location);
-        if (weatherResult.success && weatherResult.data) {
-          weatherData = weatherResult.data;
-          richData.weather = weatherData;
-          dataSources.push(`Weather: ${location.city}`);
+        // Get weather for tournament location (only if city and country are available)
+        if (location.city && location.country) {
+          const weatherResult = await getTournamentWeather(location as { city: string; country: string });
+          if (weatherResult.success && weatherResult.data) {
+            weatherData = weatherResult.data;
+            richData.weather = weatherData;
+            dataSources.push(`Weather: ${location.city}`);
+          }
         }
       }
     }

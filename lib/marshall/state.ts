@@ -67,11 +67,16 @@ export async function updateMarshallState(
   const current = await getMarshallState();
   
   if (!current) {
+    // Filter out undefined values (Supabase doesn't accept undefined)
+    const cleanUpdates = Object.fromEntries(
+      Object.entries(updates).filter(([_, value]) => value !== undefined)
+    ) as Partial<MarshallState>;
+    
     // Create initial state if it doesn't exist
     const { data, error } = await supabase
       .from('marshall_state')
       .insert({
-        ...updates,
+        ...cleanUpdates,
         updated_by: updatedBy,
       })
       .select()
@@ -85,11 +90,16 @@ export async function updateMarshallState(
     return data;
   }
   
+  // Filter out undefined values (Supabase doesn't accept undefined)
+  const cleanUpdates = Object.fromEntries(
+    Object.entries(updates).filter(([_, value]) => value !== undefined)
+  ) as Partial<MarshallState>;
+  
   // Update existing state
   const { data, error } = await supabase
     .from('marshall_state')
     .update({
-      ...updates,
+      ...cleanUpdates,
       updated_by: updatedBy,
     })
     .eq('id', current.id)
@@ -124,13 +134,20 @@ export async function updateLocationForTournament(
   
   const location = tournament.location as { city?: string; country?: string };
   
-  await updateMarshallState({
+  const updates: Partial<MarshallState> = {
     current_city: location.city,
     current_country: location.country,
     arrived_at: new Date().toISOString(),
-    leaving_at: tournament.end_date ? new Date(tournament.end_date).toISOString() : undefined,
-    next_tournament_id: null, // Clear next tournament since we're here
-  }, 'system');
+  };
+  
+  if (tournament.end_date) {
+    updates.leaving_at = new Date(tournament.end_date).toISOString();
+  }
+  
+  // Clear next tournament since we're here (omit the field to clear it)
+  updates.next_tournament_id = undefined;
+  
+  await updateMarshallState(updates, 'system');
 }
 
 /**

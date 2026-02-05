@@ -23,12 +23,17 @@ export async function uploadImageToStorage(
   try {
     const supabase = createAdminSupabase();
     
-    // Convert File to ArrayBuffer if needed
+    // Convert File or Buffer to ArrayBuffer if needed
     let fileData: ArrayBuffer;
     if (file instanceof File) {
       fileData = await file.arrayBuffer();
+    } else if (Buffer.isBuffer(file)) {
+      // Convert Node.js Buffer to ArrayBuffer
+      // Create a new ArrayBuffer from the Buffer's contents
+      fileData = new Uint8Array(file).buffer;
     } else {
-      fileData = file;
+      // Assume it's already an ArrayBuffer or convert if needed
+      fileData = file as ArrayBuffer;
     }
     
     // Upload to storage

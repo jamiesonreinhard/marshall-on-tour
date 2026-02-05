@@ -83,9 +83,22 @@ export async function GET() {
       try {
         console.log(`Testing ${endpoint.name}:`, endpoint.url.replace(apiKey, '***'));
         
+        // Filter out undefined values from headers
+        const headers: Record<string, string> = {};
+        if (endpoint.headers) {
+          for (const [key, value] of Object.entries(endpoint.headers)) {
+            if (value !== undefined) {
+              headers[key] = value;
+            }
+          }
+        }
+        if (!headers['Accept']) {
+          headers['Accept'] = 'application/json';
+        }
+        
         const response = await fetch(endpoint.url, {
           cache: 'no-store',
-          headers: endpoint.headers || { 'Accept': 'application/json' },
+          headers,
         });
 
         const status = response.status;

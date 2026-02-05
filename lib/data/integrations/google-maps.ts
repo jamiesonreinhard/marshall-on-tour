@@ -79,25 +79,6 @@ export async function findPlacesNearby(
     
     const data = await response.json();
     
-    // Track API costs
-    try {
-      const { logCost, calculateGoogleMapsCost } = await import('@/lib/costs/tracker');
-      const cost = calculateGoogleMapsCost('directions', 1);
-      
-      await logCost({
-        service: 'google-maps',
-        endpoint: 'directions',
-        cost_usd: cost,
-        request_count: 1,
-        metadata: {
-          from: `${from.lat},${from.lng}`,
-          to: `${to.lat},${to.lng}`,
-        },
-      });
-    } catch (costError) {
-      console.warn('Failed to track Google Maps cost:', costError);
-    }
-    
     if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
       throw new Error(`Google Maps API error: ${data.status}`);
     }
@@ -346,16 +327,16 @@ export async function geocodeLocation(
     // Track API costs
     try {
       const { logCost, calculateGoogleMapsCost } = await import('@/lib/costs/tracker');
-      const cost = calculateGoogleMapsCost('directions', 1);
+      const cost = calculateGoogleMapsCost('geocoding', 1);
       
       await logCost({
         service: 'google-maps',
-        endpoint: 'directions',
+        endpoint: 'geocoding',
         cost_usd: cost,
         request_count: 1,
         metadata: {
-          from: `${from.lat},${from.lng}`,
-          to: `${to.lat},${to.lng}`,
+          city,
+          country,
         },
       });
     } catch (costError) {
@@ -400,7 +381,7 @@ export async function geocodeLocation(
  * Mock data (fallback)
  */
 function getMockPlaces(type: LocationPlace['type']): LocationPlace[] {
-  const mockPlaces: Record<LocationPlace['type'], LocationPlace[]> = {
+  const mockPlaces: Partial<Record<LocationPlace['type'], LocationPlace[]>> = {
     hotel: [
       {
         id: 'mock-hotel-1',
@@ -442,6 +423,15 @@ function getMockPlaces(type: LocationPlace['type']): LocationPlace[] {
         address: '321 Museum Way',
         coordinates: { lat: 0, lng: 0 },
         rating: 4.6,
+      },
+    ],
+    venue: [
+      {
+        id: 'mock-venue-1',
+        name: 'Tennis Center',
+        type: 'venue',
+        address: '100 Tennis Court',
+        coordinates: { lat: 0, lng: 0 },
       },
     ],
   };

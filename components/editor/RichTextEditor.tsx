@@ -84,7 +84,7 @@ function htmlToMarkdown(html: string): string {
   markdown = markdown.replace(/<h3>(.*?)<\/h3>/gi, '### $1\n\n');
   
   // Lists
-  markdown = markdown.replace(/<ul>(.*?)<\/ul>/gis, (match, content) => {
+  markdown = markdown.replace(/<ul>([\s\S]*?)<\/ul>/gi, (match, content) => {
     const items = content.match(/<li>(.*?)<\/li>/gi) || [];
     return items.map((item: string) => `- ${item.replace(/<li>(.*?)<\/li>/i, '$1')}`).join('\n') + '\n\n';
   });

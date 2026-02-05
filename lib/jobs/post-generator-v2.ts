@@ -120,12 +120,12 @@ export async function generatePostFromOpportunityV2(
     
     // Log missing data
     const missing: any = {};
-    if (opportunity.type === 'analysis' && !richData.players) missing.player_stats = true;
-    if (opportunity.type === 'analysis' && !richData.matches) missing.match_results = true;
-    if (opportunity.type === 'travel' && !richData.weather) missing.weather_data = true;
+    if ((opportunity.type === 'match' || opportunity.type === 'player' || opportunity.type === 'news') && !richData.players) missing.player_stats = true;
+    if ((opportunity.type === 'match' || opportunity.type === 'player' || opportunity.type === 'news') && !richData.matches) missing.match_results = true;
+    if (opportunity.type === 'tournament' && !richData.weather) missing.weather_data = true;
     if (opportunity.type === 'blast-from-past' && !richData.historicalPlayer) missing.historical_context = true;
     if (opportunity.type === 'gear' && !richData.gearItems) missing.gear_specs = true;
-    if (opportunity.type === 'travel' && !richData.hotels && !richData.restaurants) missing.location_info = true;
+    if (opportunity.type === 'tournament' && !richData.hotels && !richData.restaurants) missing.location_info = true;
     
     if (Object.keys(missing).length > 0) {
       logMissingData(missing);

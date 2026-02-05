@@ -27,7 +27,7 @@ export async function handleGearPost(
     
     // 2. Determine gear type from metadata or topic
     const guideType = opportunity.metadata?.guide_type || 'racket';
-    const gearTypeMap: Record<string, string> = {
+    const gearTypeMap: Record<string, 'racket' | 'apparel' | 'bag' | 'shoes' | 'strings' | 'grip'> = {
       'racket': 'racket',
       'clothing': 'apparel',
       'accessory': 'bag',

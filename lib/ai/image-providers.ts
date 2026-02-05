@@ -114,7 +114,8 @@ export class ReplicateProvider implements ImageProviderInterface {
       console.log(`[Replicate Provider] Face consistency: ${options.faceReferenceUrl}, ID weight: ${input.id_weight}`);
     }
 
-    const output = await client.run(model, { input });
+    // Type assertion needed because Replicate client expects specific model format
+    const output = await client.run(model as `${string}/${string}` | `${string}/${string}:${string}`, { input });
     const imageUrl = Array.isArray(output) ? output[0] : output;
 
     if (!imageUrl) {

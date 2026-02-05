@@ -37,7 +37,7 @@ function parseRSSFeed(xml: string, source: string): NewsItem[] {
   const items: NewsItem[] = [];
   
   // Simple RSS parser (for MVP - consider using a library like 'rss-parser' for production)
-  const itemMatches = xml.matchAll(/<item>(.*?)<\/item>/gs);
+  const itemMatches = xml.matchAll(/<item>([\s\S]*?)<\/item>/g);
   
   for (const match of itemMatches) {
     const itemXml = match[1];

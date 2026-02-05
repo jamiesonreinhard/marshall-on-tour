@@ -118,45 +118,47 @@ export async function aggregateDataForContent(
       if (tournament) {
         const location = tournament.location as { city?: string; country?: string };
         
-        // Weather
-        const weatherResult = await getTournamentWeather(location);
-        if (weatherResult.success && weatherResult.data) {
-          data.tournamentData = {
-            ...data.tournamentData,
-            weather: weatherResult.data,
-          };
-        }
-        
-        // Geocode location for Google Maps
-        const geoResult = await geocodeLocation(location.city || '', location.country || '');
-        if (geoResult.success && geoResult.data) {
-          const coords = geoResult.data;
-          
-          // Hotels
-          const hotelsResult = await findPlacesNearby(coords, 'hotel', 5000, 10);
-          if (hotelsResult.success && hotelsResult.data) {
+        // Weather (only if city and country are available)
+        if (location.city && location.country) {
+          const weatherResult = await getTournamentWeather(location as { city: string; country: string });
+          if (weatherResult.success && weatherResult.data) {
             data.tournamentData = {
               ...data.tournamentData,
-              hotels: hotelsResult.data,
+              weather: weatherResult.data,
             };
           }
           
-          // Coffee shops
-          const coffeeResult = await findPlacesNearby(coords, 'coffee', 2000, 5);
-          if (coffeeResult.success && coffeeResult.data) {
-            data.tournamentData = {
-              ...data.tournamentData,
-              coffeeShops: coffeeResult.data,
-            };
-          }
-          
-          // Restaurants
-          const restaurantsResult = await findPlacesNearby(coords, 'restaurant', 3000, 5);
-          if (restaurantsResult.success && restaurantsResult.data) {
-            data.tournamentData = {
-              ...data.tournamentData,
-              restaurants: restaurantsResult.data,
-            };
+          // Geocode location for Google Maps
+          const geoResult = await geocodeLocation(location.city, location.country);
+          if (geoResult.success && geoResult.data) {
+            const coords = geoResult.data;
+            
+            // Hotels
+            const hotelsResult = await findPlacesNearby(coords, 'hotel', 5000, 10);
+            if (hotelsResult.success && hotelsResult.data) {
+              data.tournamentData = {
+                ...data.tournamentData,
+                hotels: hotelsResult.data,
+              };
+            }
+            
+            // Coffee shops
+            const coffeeResult = await findPlacesNearby(coords, 'coffee', 2000, 5);
+            if (coffeeResult.success && coffeeResult.data) {
+              data.tournamentData = {
+                ...data.tournamentData,
+                coffeeShops: coffeeResult.data,
+              };
+            }
+            
+            // Restaurants
+            const restaurantsResult = await findPlacesNearby(coords, 'restaurant', 3000, 5);
+            if (restaurantsResult.success && restaurantsResult.data) {
+              data.tournamentData = {
+                ...data.tournamentData,
+                restaurants: restaurantsResult.data,
+              };
+            }
           }
         }
       }

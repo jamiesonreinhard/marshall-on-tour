@@ -92,11 +92,6 @@ export function getQuotaStatus(): QuotaStatus {
 }
 
 /**
- * Import getQuotaStatus for use in gemini.ts
- */
-export { getQuotaStatus };
-
-/**
  * Sleep for specified milliseconds
  */
 export function sleep(ms: number): Promise<void> {

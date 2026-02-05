@@ -33,16 +33,16 @@ function parseRSS(xml: string, source: string): RSSItem[] {
   
   try {
     // Simple RSS parser (for production, consider using a library like 'rss-parser')
-    const itemRegex = /<item>(.*?)<\/item>/gs;
+    const itemRegex = /<item>([\s\S]*?)<\/item>/g;
     const matches = xml.match(itemRegex);
 
     if (!matches) return items;
 
     matches.forEach((itemXml) => {
-      const titleMatch = itemXml.match(/<title>(.*?)<\/title>/s);
-      const descriptionMatch = itemXml.match(/<description>(.*?)<\/description>/s);
-      const linkMatch = itemXml.match(/<link>(.*?)<\/link>/s);
-      const pubDateMatch = itemXml.match(/<pubDate>(.*?)<\/pubDate>/s);
+      const titleMatch = itemXml.match(/<title>([\s\S]*?)<\/title>/);
+      const descriptionMatch = itemXml.match(/<description>([\s\S]*?)<\/description>/);
+      const linkMatch = itemXml.match(/<link>([\s\S]*?)<\/link>/);
+      const pubDateMatch = itemXml.match(/<pubDate>([\s\S]*?)<\/pubDate>/);
 
       if (titleMatch && linkMatch) {
         items.push({

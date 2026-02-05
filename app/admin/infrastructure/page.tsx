@@ -389,11 +389,11 @@ export default function InfrastructurePage() {
     },
     {
       name: 'Gear Data',
-      type: 'database',
+      type: 'service',
       description: 'Product database (gear_items table) for gear guides and quizzes. Sourced from existing web guides.',
       when: 'When generating gear comparison guides (infrequent: 45-day minimum)',
       why: 'Accurate product data for gear guides, affiliate links, and future quizzes',
-      status: 'in_progress',
+      status: 'configured',
       notes: 'Database created. Need to source and populate product data from existing guides (Tennis Warehouse, Tennis Express, etc.).',
     },
     {

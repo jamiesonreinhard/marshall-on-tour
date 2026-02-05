@@ -9,6 +9,7 @@
 
 import * as fs from "fs";
 import * as path from "path";
+// @ts-ignore - archiver types may not be available
 import archiver from "archiver";
 
 const PROJECT_ROOT = path.join(__dirname, "..");
@@ -72,7 +73,7 @@ async function prepareTrainingImages() {
       resolve(ZIP_PATH);
     });
 
-    archive.on("error", (err) => {
+    archive.on("error", (err: Error) => {
       reject(err);
     });
 

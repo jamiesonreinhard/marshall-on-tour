@@ -153,7 +153,7 @@ export async function fetchWeather(
       current: {
         temperature: Math.round(current.temperature),
         condition: mapWeatherCode(current.weathercode),
-        humidity: humidity,
+        humidity: humidity ?? 50, // Default to 50% if not available
         wind_speed: Math.round(current.windspeed * 3.6), // Convert m/s to km/h
       },
       updated_at: new Date().toISOString(),
