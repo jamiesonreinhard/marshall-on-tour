@@ -198,12 +198,25 @@ export default function InfrastructurePage() {
           columns: [
             { name: 'id', type: 'uuid', nullable: false, description: 'Primary key' },
             { name: 'job_name', type: 'text', nullable: false, description: 'Job name (content-intelligence, etc.)' },
-            { name: 'status', type: 'text', nullable: false, description: 'success, error, or running' },
+            { name: 'job_type', type: 'text', nullable: false, description: 'scheduled, manual, or api' },
+            { name: 'status', type: 'text', nullable: false, description: 'success, error, or skipped' },
             { name: 'started_at', type: 'timestamp', nullable: false, description: 'When job started' },
             { name: 'completed_at', type: 'timestamp', nullable: true, description: 'When job completed' },
             { name: 'duration_ms', type: 'integer', nullable: true, description: 'Duration in milliseconds' },
             { name: 'result', type: 'jsonb', nullable: true, description: 'Job result/output' },
-            { name: 'error', type: 'text', nullable: true, description: 'Error message if failed' },
+            { name: 'error_message', type: 'text', nullable: true, description: 'Error message if failed' },
+            { name: 'metadata', type: 'jsonb', nullable: true, description: 'Additional metadata (triggered_by, job_id, etc.)' },
+          ],
+        },
+        {
+          name: 'content_logs',
+          description: 'Detailed content generation logs. Tracks opportunities found, data sources used, prompts, and generation results for comprehensive debugging and refinement.',
+          columns: [
+            { name: 'id', type: 'uuid', nullable: false, description: 'Primary key' },
+            { name: 'job_id', type: 'text', nullable: false, description: 'Unique job identifier (links to job_logs metadata)' },
+            { name: 'timestamp', type: 'timestamp', nullable: false, description: 'When log was created' },
+            { name: 'log_data', type: 'jsonb', nullable: false, description: 'Full log data: opportunities, data sources, prompts, results' },
+            { name: 'created_at', type: 'timestamp', nullable: false, description: 'Record creation timestamp' },
           ],
         },
       ];
@@ -255,7 +268,25 @@ export default function InfrastructurePage() {
     {
       path: '/api/jobs/content-intelligence',
       method: 'GET, POST',
-      description: 'Content Intelligence Job. GET evaluates opportunities, POST generates post from best opportunity.',
+      description: 'Content Intelligence Job. GET evaluates opportunities, POST generates post from best opportunity. Runs daily at 6 AM CT via Vercel Cron.',
+      status: 'active',
+    },
+    {
+      path: '/api/cron/content-intelligence',
+      method: 'GET',
+      description: 'Cron endpoint for Content Intelligence job. Called by Vercel Cron daily at 12 PM UTC (6 AM CT).',
+      status: 'active',
+    },
+    {
+      path: '/api/jobs/logs',
+      method: 'GET',
+      description: 'Get job execution logs. Returns status, duration, and results for all background jobs.',
+      status: 'active',
+    },
+    {
+      path: '/api/jobs/content-logs',
+      method: 'GET',
+      description: 'Get detailed content generation logs. Returns comprehensive breakdown of opportunities, data sources, prompts, and results.',
       status: 'active',
     },
     {
@@ -334,7 +365,7 @@ export default function InfrastructurePage() {
       name: 'RSS Feeds',
       type: 'service',
       description: 'Tennis news from ESPN, BBC, Tennis.com. Parses RSS feeds for breaking news.',
-      when: 'Content Intelligence job (2-3x/day)',
+      when: 'Content Intelligence job (daily)',
       why: 'Real news data for timely content',
       status: 'active',
       notes: 'Cached 1 hour. Falls back to mock data if feeds unavailable.',

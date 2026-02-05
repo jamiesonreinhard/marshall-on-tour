@@ -75,7 +75,7 @@ export default function HowItWorksPage() {
                   <h3 className="text-xl font-bold text-gray-900 mb-3">How Does He Work?</h3>
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
                     <ol className="list-decimal list-inside space-y-2 text-gray-700">
-                      <li><strong>Background jobs</strong> run 2-3x/day to find the best content opportunities</li>
+                      <li><strong>Background jobs</strong> run daily to find the best content opportunities</li>
                       <li><strong>Scoring system</strong> ranks opportunities by timeliness, affiliate potential, SEO, variety, and engagement</li>
                       <li><strong>Data aggregator</strong> pulls real data from APIs (weather, news, matches, locations)</li>
                       <li><strong>Gemini AI</strong> generates posts using Marshall's voice and the aggregated data</li>
@@ -353,13 +353,15 @@ export default function HowItWorksPage() {
                 <div className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-lg p-6">
                   <h4 className="font-bold text-gray-900 mb-2">Example Flow</h4>
                   <div className="text-sm text-gray-700 space-y-2">
-                    <p><strong>8 AM:</strong> Content Intelligence job runs</p>
-                    <p><strong>8:01 AM:</strong> Finds opportunity: "Indian Wells Day 3 Update" (score: 65)</p>
-                    <p><strong>8:02 AM:</strong> Checks rules: ✅ Can post (no posts today yet)</p>
-                    <p><strong>8:03 AM:</strong> Aggregates data: Tournament info, weather (75°F, sunny), recent news</p>
-                    <p><strong>8:04 AM:</strong> Gemini generates post: "Indian Wells Day 3: Alcaraz Advances, Weather Perfect"</p>
-                    <p><strong>8:05 AM:</strong> Post saved to database, social posts created</p>
-                    <p><strong>8:06 AM:</strong> Social posts scheduled for 10 AM, 2 PM, 6 PM</p>
+                    <p><strong>6 AM CT:</strong> Content Intelligence job runs (Vercel Cron)</p>
+                    <p><strong>6:00:30 AM:</strong> Finds opportunity: "Dallas Open Preview" (score: 62)</p>
+                    <p><strong>6:01 AM:</strong> Checks rules: ✅ Can post (no posts today yet)</p>
+                    <p><strong>6:02 AM:</strong> Travel handler gathers: Tournament data, weather, hotels, coffee shops</p>
+                    <p><strong>6:03 AM:</strong> Gemini generates post with comprehensive data</p>
+                    <p><strong>6:04 AM:</strong> Fact-checker validates claims and Marshall's age</p>
+                    <p><strong>6:05 AM:</strong> Editor refines based on fact-check issues</p>
+                    <p><strong>6:06 AM:</strong> Image generated (stock image for preview post)</p>
+                    <p><strong>6:07 AM:</strong> Post saved to database as draft, detailed log saved</p>
                   </div>
                 </div>
               </div>
@@ -580,7 +582,22 @@ export default function HowItWorksPage() {
                     <TechCard
                       title="Variety Tracker"
                       location="lib/jobs/variety-tracker.ts"
-                      description="Tracks recent content to prevent repetition"
+                      description="Tracks recent content to prevent repetition (tournaments, topics, categories)"
+                    />
+                    <TechCard
+                      title="Post Generator V2"
+                      location="lib/jobs/post-generator-v2.ts"
+                      description="Unified post generation with type-specific handlers and comprehensive data gathering"
+                    />
+                    <TechCard
+                      title="Type-Specific Handlers"
+                      location="lib/jobs/post-handlers/"
+                      description="Specialized handlers: analysis, nostalgia, gear, travel, lifestyle"
+                    />
+                    <TechCard
+                      title="Content Logger"
+                      location="lib/jobs/content-logger.ts"
+                      description="Comprehensive logging: opportunities, data sources, prompts, generation results"
                     />
                     <TechCard
                       title="Data Aggregator"
@@ -600,12 +617,12 @@ export default function HowItWorksPage() {
                     <TechCard
                       title="Fact-Checker Agent"
                       location="lib/ai/fact-checker.ts"
-                      description="Validates content for factual errors, prevents misinformation"
+                      description="Validates claims, hyperbole, and Marshall's age consistency (born 1993, 33 years old)"
                     />
                     <TechCard
                       title="Editor Agent"
                       location="lib/ai/editor.ts"
-                      description="Refines content based on fact-checker feedback, maintains Marshall's voice"
+                      description="Refines posts based on fact-check issues while maintaining Marshall's voice"
                     />
                     <TechCard
                       title="Stock Image Integration"
@@ -683,6 +700,11 @@ export default function HowItWorksPage() {
                       purpose="Background job execution logs"
                       keyFields="job_name, status, started_at, duration_ms"
                     />
+                    <TableCard
+                      name="content_logs"
+                      purpose="Detailed content generation logs (opportunities, data sources, prompts, results)"
+                      keyFields="job_id, timestamp, log_data"
+                    />
                   </div>
                 </div>
 
@@ -710,6 +732,16 @@ export default function HowItWorksPage() {
                       path="/api/calendar/sync-atp"
                       description="Sync ATP tournament calendar (static or Sportradar API)"
                     />
+                    <EndpointCard
+                      method="GET"
+                      path="/api/jobs/content-logs"
+                      description="Get detailed content generation logs (opportunities, data sources, prompts)"
+                    />
+                    <EndpointCard
+                      method="GET"
+                      path="/api/jobs/logs"
+                      description="Get job execution logs (status, duration, results)"
+                    />
                   </div>
                 </div>
 
@@ -731,6 +763,53 @@ export default function HowItWorksPage() {
                     <p className="text-gray-600 text-sm mt-3 italic">
                       Caching minimizes API calls and preserves quota (especially for Sportradar trial).
                     </p>
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-4">Development & Deployment</h3>
+                  
+                  <div className="space-y-4">
+                    <div className="bg-white border border-gray-200 rounded-lg p-4">
+                      <h4 className="font-bold text-gray-900 mb-2">Pre-Build Checks</h4>
+                      <p className="text-gray-700 mb-2">
+                        TypeScript type checking and ESLint run before deployment to catch errors early:
+                      </p>
+                      <ul className="list-disc list-inside space-y-1 text-gray-700 ml-2 text-sm">
+                        <li><code className="bg-gray-100 px-1 rounded">npm run type-check</code> - TypeScript validation</li>
+                        <li><code className="bg-gray-100 px-1 rounded">npm run lint</code> - Code quality checks</li>
+                        <li><code className="bg-gray-100 px-1 rounded">npm run pre-build</code> - Full check before deploy</li>
+                      </ul>
+                    </div>
+
+                    <div className="bg-white border border-gray-200 rounded-lg p-4">
+                      <h4 className="font-bold text-gray-900 mb-2">Enhanced Logging</h4>
+                      <p className="text-gray-700 mb-2">
+                        Comprehensive logging system tracks every step of content generation:
+                      </p>
+                      <ul className="list-disc list-inside space-y-1 text-gray-700 ml-2 text-sm">
+                        <li>All opportunities found with full scoring breakdown</li>
+                        <li>Selected opportunity and why it was chosen</li>
+                        <li>Data sources accessed (players, weather, hotels, etc.)</li>
+                        <li>Prompt information (context type, data included, token estimates)</li>
+                        <li>Missing data (what Gemini had to figure out without context)</li>
+                        <li>Generation results (post ID, fact-check issues, editor changes)</li>
+                        <li>View detailed logs in admin jobs page under "Execution Logs"</li>
+                      </ul>
+                    </div>
+
+                    <div className="bg-white border border-gray-200 rounded-lg p-4">
+                      <h4 className="font-bold text-gray-900 mb-2">Cron Job Setup</h4>
+                      <p className="text-gray-700 mb-2">
+                        Content Intelligence runs automatically via Vercel Cron:
+                      </p>
+                      <ul className="list-disc list-inside space-y-1 text-gray-700 ml-2 text-sm">
+                        <li><strong>Schedule:</strong> Daily at 6 AM CT (12 PM UTC)</li>
+                        <li><strong>Configuration:</strong> <code className="bg-gray-100 px-1 rounded">vercel.json</code></li>
+                        <li><strong>Security:</strong> Uses <code className="bg-gray-100 px-1 rounded">CRON_SECRET</code> environment variable</li>
+                        <li><strong>Monitoring:</strong> View runs in Vercel dashboard and admin jobs page</li>
+                      </ul>
+                    </div>
                   </div>
                 </div>
               </div>

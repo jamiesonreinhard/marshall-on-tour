@@ -48,8 +48,9 @@ export async function POST(
       throw updateError;
     }
     
-    // Revalidate blog pages
+    // Revalidate blog pages and homepage
     revalidatePath('/blog');
+    revalidatePath('/');
     if (post.slug) {
       revalidatePath(`/blog/${post.slug}`);
     }
