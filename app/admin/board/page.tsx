@@ -28,7 +28,7 @@ const initialTasks: Task[] = [
     status: 'in_progress',
     category: 'content',
     priority: 'high',
-    description: 'Target: 5 quality posts with real API data - Testing phase',
+    description: 'Target: 5 quality posts with real API data - Content Intelligence running daily at 6 AM CT automatically',
   },
   {
     id: '3',
@@ -52,7 +52,39 @@ const initialTasks: Task[] = [
     status: 'done',
     category: 'content',
     priority: 'high',
-    description: 'Background job to evaluate opportunities and generate posts - ✅ Active',
+    description: 'Background job to evaluate opportunities and generate posts - ✅ Automated daily at 6 AM CT via Vercel Cron',
+  },
+  {
+    id: '38',
+    title: 'Post Generator V2',
+    status: 'done',
+    category: 'content',
+    priority: 'high',
+    description: 'Type-specific handlers with comprehensive data gathering (analysis, nostalgia, gear, travel, lifestyle) - ✅ Complete',
+  },
+  {
+    id: '39',
+    title: 'Content Intelligence Logging',
+    status: 'done',
+    category: 'infrastructure',
+    priority: 'medium',
+    description: 'Detailed logging of post generation process (opportunities, data sources, prompts, results) - ✅ Complete',
+  },
+  {
+    id: '40',
+    title: 'Pre-Build Check System',
+    status: 'done',
+    category: 'infrastructure',
+    priority: 'medium',
+    description: 'TypeScript type checking and linting before deployment - ✅ Prevents build errors',
+  },
+  {
+    id: '41',
+    title: 'Marshall Age Consistency',
+    status: 'done',
+    category: 'content',
+    priority: 'high',
+    description: 'Fact-checker validates Marshall\'s age (born 1993, 33 years old) in nostalgia posts - ✅ Complete',
   },
   
   // Social
@@ -315,6 +347,14 @@ const initialTasks: Task[] = [
     category: 'infrastructure',
     priority: 'medium',
     description: 'Log all background job runs with status, duration, and results. View in admin jobs page - ✅ Complete',
+  },
+  {
+    id: '42',
+    title: 'Fix All Build Errors',
+    status: 'done',
+    category: 'infrastructure',
+    priority: 'high',
+    description: 'Fixed 20+ TypeScript errors that would cause Vercel build failures - ✅ All type errors resolved',
   },
 ];
 

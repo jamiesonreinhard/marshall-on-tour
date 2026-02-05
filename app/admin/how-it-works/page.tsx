@@ -128,7 +128,7 @@ export default function HowItWorksPage() {
                     <div className="grid grid-cols-2 gap-4 mb-4">
                       <div>
                         <span className="text-sm font-semibold text-gray-600">Schedule:</span>
-                        <p className="text-gray-900">2-3x/day (8 AM, 2 PM, 8 PM)</p>
+                        <p className="text-gray-900">Daily at 6 AM CT (12 PM UTC)</p>
                       </div>
                       <div>
                         <span className="text-sm font-semibold text-gray-600">Status:</span>

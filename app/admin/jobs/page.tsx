@@ -31,7 +31,7 @@ const jobs: Job[] = [
     description: 'Evaluates content opportunities and generates the highest-value post. Finds opportunities from tournaments, calendar, Marshall\'s state, scores them, and generates a post if score > 50.',
     endpoint: '/api/jobs/content-intelligence',
     method: 'POST',
-    schedule: '2-3x/day (8 AM, 2 PM, 8 PM)',
+    schedule: 'Daily at 6 AM CT (12 PM UTC)',
   },
   {
     id: 'content-intelligence-eval',

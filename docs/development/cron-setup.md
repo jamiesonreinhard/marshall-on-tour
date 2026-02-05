@@ -2,10 +2,8 @@
 
 ## Content Intelligence Job
 
-The content intelligence job runs **3x daily** at:
-- **8:00 AM UTC** (2 AM EST / 11 PM PST previous day)
-- **2:00 PM UTC** (9 AM EST / 6 AM PST)
-- **8:00 PM UTC** (3 PM EST / 12 PM PST)
+The content intelligence job runs **once daily** at:
+- **12:00 PM UTC** (6 AM Central Time / 7 AM Eastern Time)
 
 ## Configuration
 
@@ -16,14 +14,14 @@ Configured in `vercel.json`:
   "crons": [
     {
       "path": "/api/cron/content-intelligence",
-      "schedule": "0 8,14,20 * * *"
+      "schedule": "0 12 * * *"
     }
   ]
 }
 ```
 
 Schedule format: `minute hour day month weekday`
-- `0 8,14,20 * * *` = At minute 0 of hours 8, 14, and 20 (UTC)
+- `0 12 * * *` = At minute 0 of hour 12 (noon UTC = 6 AM Central Time)
 
 ### Environment Variables
 Set `CRON_SECRET` in Vercel environment variables for security.

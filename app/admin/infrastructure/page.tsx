@@ -411,7 +411,7 @@ export default function InfrastructurePage() {
     {
       name: 'Content Intelligence',
       description: 'Evaluates content opportunities and generates the highest-value post. Checks active tournaments, calendar entries, Marshall\'s state, and scores opportunities.',
-      schedule: '2-3x/day (8 AM, 2 PM, 8 PM)',
+      schedule: 'Daily at 6 AM CT (12 PM UTC)',
       status: 'active',
       endpoint: '/api/jobs/content-intelligence',
     },

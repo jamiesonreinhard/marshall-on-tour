@@ -1,7 +1,7 @@
 /**
  * Cron Job: Content Intelligence
  * 
- * Runs 3x daily (8 AM, 2 PM, 8 PM UTC)
+ * Runs once daily at 12 PM UTC (6 AM Central Time)
  * Configured in vercel.json
  */
 
