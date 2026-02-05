@@ -24,6 +24,13 @@ interface JobLog {
   metadata: any;
 }
 
+interface ContentLog {
+  id: string;
+  job_id: string;
+  timestamp: string;
+  log_data: any;
+}
+
 const jobs: Job[] = [
   {
     id: 'content-intelligence',
@@ -62,8 +69,10 @@ export default function JobsPage() {
   const [runningJobs, setRunningJobs] = useState<Set<string>>(new Set());
   const [results, setResults] = useState<Record<string, any>>({});
   const [logs, setLogs] = useState<JobLog[]>([]);
+  const [contentLogs, setContentLogs] = useState<Record<string, ContentLog>>({});
   const [logsLoading, setLogsLoading] = useState(false);
   const [selectedJobFilter, setSelectedJobFilter] = useState<string>('all');
+  const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
   
   // Post generation options
   const [showPostTypeModal, setShowPostTypeModal] = useState(false);
@@ -84,6 +93,20 @@ export default function JobsPage() {
       const response = await fetch(`/api/jobs/logs?limit=100${jobName ? `&job_name=${jobName}` : ''}`);
       const data = await response.json();
       setLogs(data.logs || []);
+      
+      // Fetch detailed content logs for content-intelligence jobs
+      if (jobName === 'all' || jobName === 'content-intelligence') {
+        const contentLogsResponse = await fetch(`/api/jobs/content-logs?limit=100`);
+        const contentLogsData = await contentLogsResponse.json();
+        if (contentLogsData.success && contentLogsData.logs) {
+          // Map content logs by job_id for easy lookup
+          const logsMap: Record<string, ContentLog> = {};
+          contentLogsData.logs.forEach((log: ContentLog) => {
+            logsMap[log.job_id] = log;
+          });
+          setContentLogs(logsMap);
+        }
+      }
     } catch (error) {
       console.error('Error fetching logs:', error);
     } finally {
@@ -407,13 +430,64 @@ export default function JobsPage() {
                     )}
 
                     {log.result && (
-                      <details className="mt-2">
+                      <details 
+                        className="mt-2"
+                        open={expandedLogs.has(log.id)}
+                        onToggle={(e) => {
+                          const isOpen = (e.target as HTMLDetailsElement).open;
+                          setExpandedLogs(prev => {
+                            const next = new Set(prev);
+                            if (isOpen) {
+                              next.add(log.id);
+                            } else {
+                              next.delete(log.id);
+                            }
+                            return next;
+                          });
+                        }}
+                      >
                         <summary className="cursor-pointer text-sm font-semibold hover:underline">
-                          View Details
+                          ▼ View Details
                         </summary>
-                        <pre className="mt-2 text-xs bg-white p-3 rounded border border-gray-200 overflow-x-auto">
-                          {JSON.stringify(log.result, null, 2)}
-                        </pre>
+                        <div className="mt-2 space-y-3">
+                          {/* Basic Result */}
+                          <div>
+                            <div className="text-xs font-semibold text-gray-700 mb-1">Execution Result:</div>
+                            <pre className="text-xs bg-white p-3 rounded border border-gray-200 overflow-x-auto">
+                              {JSON.stringify(log.result, null, 2)}
+                            </pre>
+                          </div>
+                          
+                          {/* Detailed Content Log (if available) */}
+                          {log.job_name === 'content-intelligence' && (() => {
+                            // Try to find matching content log by job_id or by timestamp (within 5 seconds)
+                            const jobId = log.metadata?.job_id;
+                            let contentLog: ContentLog | null = null;
+                            
+                            if (jobId && contentLogs[jobId]) {
+                              contentLog = contentLogs[jobId];
+                            } else {
+                              // Find by timestamp (within 5 seconds of job start)
+                              const logTime = new Date(log.started_at).getTime();
+                              contentLog = Object.values(contentLogs).find(cl => {
+                                const clTime = new Date(cl.timestamp).getTime();
+                                return Math.abs(clTime - logTime) < 5000; // Within 5 seconds
+                              }) || null;
+                            }
+                            
+                            return contentLog ? (
+                              <div>
+                                <div className="text-xs font-semibold text-gray-700 mb-1">📊 Detailed Generation Log:</div>
+                                <div className="text-xs text-gray-600 mb-2">
+                                  Job ID: {contentLog.job_id} • {new Date(contentLog.timestamp).toLocaleString()}
+                                </div>
+                                <pre className="text-xs bg-blue-50 p-3 rounded border border-blue-200 overflow-x-auto max-h-96 overflow-y-auto">
+                                  {JSON.stringify(contentLog.log_data, null, 2)}
+                                </pre>
+                              </div>
+                            ) : null;
+                          })()}
+                        </div>
                       </details>
                     )}
                   </div>

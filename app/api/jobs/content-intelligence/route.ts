@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
       error_message: result.success ? undefined : result.reason,
       metadata: {
         triggered_by: 'api',
+        job_id: result.log?.job_id || result.log?.id, // Link to content log
       },
     }, startTime);
     
