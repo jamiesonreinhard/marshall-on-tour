@@ -84,18 +84,17 @@ export function getImageStrategy(
     };
   }
   
-  // LIFESTYLE POSTS: Marshall in lifestyle settings
+  // LIFESTYLE POSTS: Marshall in lifestyle settings (candid, face not visible)
   if (postType === 'lifestyle' || topicLower.includes('coffee') || topicLower.includes('hotel') || topicLower.includes('travel')) {
-      // Select a random lifestyle scene for variety - all action-oriented, candid moments
+      // Select a random lifestyle scene for variety - all candid, face not visible or looking away
       const lifestyleScenes = [
-        'Marshall walking through a European city, cobblestone streets, tennis bag over shoulder, exploring the area',
-        'Marshall laughing with friends at a tennis tournament, casual moment, stadium in background, genuine interaction',
-        'Marshall having coffee at an outdoor cafe, reading a tennis magazine, people watching, authentic moment',
-        'Marshall exploring a new city neighborhood, tennis racket visible, taking photos, travel aesthetic',
-        'Marshall at a coffee shop, laptop open, tennis tournament on screen, working, authentic work moment',
-        'Marshall walking through tournament grounds, observing players practice, notebook in hand, insider moment',
-        'Marshall at a local market or street, discovering local food, tennis bag visible, travel exploration',
-        'Marshall at a rooftop bar overlooking a tennis venue, golden hour, talking with someone, relaxed atmosphere',
+        'Marshall walking through a European city, cobblestone streets, tennis bag over shoulder, exploring the area, seen from behind or side profile, face not visible',
+        'Marshall having coffee at an outdoor cafe, looking out at the street scene, people walking by, completely absorbed in the moment, unaware of camera, NOT looking at camera',
+        'Marshall exploring a new city neighborhood, tennis racket visible, taking photos, travel aesthetic, seen from behind or side, face not clearly visible',
+        'Marshall at a coffee shop, laptop open, tennis tournament on screen, working, head down looking at screen, face not visible',
+        'Marshall walking through tournament grounds, observing players practice, notebook in hand, seen from behind or side, face not visible',
+        'Marshall at a local market or street, discovering local food, tennis bag visible, travel exploration, looking away from camera, face not clearly visible',
+        'Marshall at a rooftop bar overlooking a tennis venue, golden hour, seen from behind looking at the view, face not visible',
       ];
       
       const randomScene = lifestyleScenes[Math.floor(Math.random() * lifestyleScenes.length)];
@@ -103,9 +102,9 @@ export function getImageStrategy(
       return {
         includeMarshall: true,
         imageType: 'lifestyle-moment',
-        sceneDescription: `${randomScene}. Casual but refined, quiet luxury aesthetic. Natural, candid moment. Marshall engaged in the activity, not posing. Environmental portraiture - show Marshall in context doing something authentic.`,
-        styleGuide: 'Lifestyle photography, candid moments, natural lighting, authentic social media style, quiet luxury vibe. Candid, action-oriented composition. Marshall should be doing something, not just looking at camera.',
-        consistencyNotes: 'Lifestyle posts should include Marshall in candid, authentic moments. Use consistent face reference. Focus on Marshall doing things, not posed portraits.',
+        sceneDescription: `${randomScene}. Casual but refined, quiet luxury aesthetic. Natural, candid moment. Marshall engaged in the activity, not posing. Environmental portraiture - show Marshall in context doing something authentic. Face not visible or looking away from camera.`,
+        styleGuide: 'Lifestyle photography, candid moments, natural lighting, authentic social media style, quiet luxury vibe. Candid, action-oriented composition. Marshall should be doing something, not just looking at camera. Face should not be clearly visible.',
+        consistencyNotes: 'Lifestyle posts should include Marshall in candid, authentic moments. Face should not be visible to avoid consistency issues. Focus on body language and environment.',
       };
   }
   
@@ -120,15 +119,15 @@ export function getImageStrategy(
         consistencyNotes: 'Match analysis should show the match, not Marshall. Use action shots or court scenes.',
       };
     } else {
-      // General analysis: Marshall in candid, natural moments
-      // Select a random analysis scene for variety - all very candid and natural
+      // General analysis: Marshall in candid, natural moments (face not visible or looking away)
+      // Select a random analysis scene for variety - all very candid, face not clearly visible
       // FIRST SCENE is the French cafe scene the user specifically wants
       const analysisScenes = [
-        'Marshall sitting at an outdoor French cafe table on a Parisian or Montpellier street, small espresso cup in hand, looking out at the street scene, people walking by, cars passing, completely absorbed in the moment, unaware of camera, natural relaxed posture, candid street photography, NOT looking at camera, NOT posing',
-        'Marshall at a small bistro table, coffee cup in hand, reading something on his phone or newspaper, completely absorbed, head slightly down, unaware of camera, authentic moment, natural body language',
-        'Marshall walking through a European city street, tennis bag slung over shoulder, looking at architecture or signs, natural walking pose, candid street photography, NOT looking at camera',
-        'Marshall sitting on a park bench near tennis courts, coffee beside him, watching players practice in distance, relaxed, natural body language, documentary style, unaware of camera',
-        'Marshall at a local market or street cafe, talking with a local or vendor, genuine interaction, not posed, natural conversation moment, NOT looking at camera',
+        'Marshall sitting at an outdoor French cafe table on a Parisian or Montpellier street, small espresso cup in hand, looking out at the street scene, people walking by, cars passing, completely absorbed in the moment, unaware of camera, natural relaxed posture, candid street photography, NOT looking at camera, NOT posing, face looking away from camera',
+        'Marshall at a small bistro table, coffee cup in hand, reading something on his phone or newspaper, completely absorbed, head down looking at phone/newspaper, face not visible, unaware of camera, authentic moment, natural body language',
+        'Marshall walking through a European city street, tennis bag slung over shoulder, looking at architecture or signs, natural walking pose, seen from behind or side profile, face not visible, candid street photography, NOT looking at camera',
+        'Marshall sitting on a park bench near tennis courts, coffee beside him, watching players practice in distance, seen from behind or side, face not visible, relaxed, natural body language, documentary style, unaware of camera',
+        'Marshall at a local market or street cafe, talking with a local or vendor, seen from behind or side, face not clearly visible, genuine interaction, not posed, natural conversation moment, NOT looking at camera',
       ];
       
       const randomScene = analysisScenes[Math.floor(Math.random() * analysisScenes.length)];
@@ -136,19 +135,19 @@ export function getImageStrategy(
       return {
         includeMarshall: true,
         imageType: 'tournament-scene',
-        sceneDescription: `${randomScene}. Completely candid, unposed moment. Marshall is NOT aware of the camera, NOT looking at camera, NOT posing. Natural body language, authentic behavior. Documentary street photography style.`,
-        styleGuide: 'Street photography, candid documentary style, natural unposed moments, Marshall unaware of camera, authentic behavior, environmental context clearly visible. NOT staged, NOT posed, NOT looking at camera.',
-        consistencyNotes: 'Analysis posts should show Marshall in completely candid, natural moments. Use consistent face reference. Marshall should appear unaware of camera, not posing.',
+        sceneDescription: `${randomScene}. Completely candid, unposed moment. Marshall is NOT aware of the camera, NOT looking at camera, NOT posing. Natural body language, authentic behavior. Documentary street photography style. Face should not be clearly visible.`,
+        styleGuide: 'Street photography, candid documentary style, natural unposed moments, Marshall unaware of camera, authentic behavior, environmental context clearly visible. NOT staged, NOT posed, NOT looking at camera. Face should not be clearly visible to avoid consistency issues.',
+        consistencyNotes: 'Analysis posts should show Marshall in completely candid, natural moments. Face should not be visible or should be looking away to avoid consistency issues. Focus on body language and environment.',
       };
     }
   }
   
-  // DEFAULT: Marshall in candid moment (fallback)
+  // DEFAULT: Marshall in candid moment (fallback) - face not visible
   return {
     includeMarshall: true,
     imageType: 'lifestyle-moment',
-    sceneDescription: `Marshall in a candid, authentic moment - walking through a city, having coffee, exploring a location, or engaging in a natural activity. Environmental portraiture, not a centered portrait. Marshall doing something, not posing.`,
-    styleGuide: 'Lifestyle photography, candid moments, natural lighting, authentic social media style. Candid, action-oriented composition. Marshall should be doing something authentic.',
-    consistencyNotes: 'Default to Marshall in candid moment. Use consistent face reference. Candid, not posed portraits.',
+    sceneDescription: `Marshall in a candid, authentic moment - walking through a city, having coffee, exploring a location, or engaging in a natural activity. Environmental portraiture, not a centered portrait. Marshall doing something, not posing. Seen from behind or side, face not clearly visible, or looking away from camera.`,
+    styleGuide: 'Lifestyle photography, candid moments, natural lighting, authentic social media style. Candid, action-oriented composition. Marshall should be doing something authentic. Face should not be clearly visible.',
+    consistencyNotes: 'Default to Marshall in candid moment. Face should not be visible to avoid consistency issues. Focus on body language and environment.',
   };
 }

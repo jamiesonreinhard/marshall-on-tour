@@ -1,13 +1,13 @@
 /**
  * Image Generation Integration
  * 
- * Supports multiple providers: Replicate/Flux and Google Imagen
- * Toggle via IMAGE_GENERATION_PROVIDER env var: 'replicate' or 'imagen'
+ * Supports multiple providers: Replicate/Flux, Fal.ai, and Google Imagen
+ * Automatically routes to the best provider based on configuration and use case
  */
 
 import { getImageStrategy, ImageStrategy } from './image-strategy';
 import { getStockImageForPost } from './stock-images';
-import { getImageProvider, ImageProviderInterface } from './image-providers';
+import { getImageProvider, ImageProviderInterface, ReplicateProvider, ImagenProvider, FalProvider } from './image-providers';
 
 const BASE_IDENTITY_IMAGE = '/assets/base_identity.png';
 const MARSHALL_FACE_REFERENCE = process.env.MARSHALL_FACE_REFERENCE_URL || BASE_IDENTITY_IMAGE;
@@ -78,15 +78,15 @@ export async function generatePostImage(
   }
   
   // If Marshall IS included, or stock image failed, use AI generation
-  let provider: ImageProviderInterface;
-  try {
-    provider = getImageProvider();
-  } catch (error: any) {
-    console.warn(`[Image Generation] Provider setup failed: ${error.message}. Returning fallback image.`);
+  const sceneDescription = context.scene || strategy.sceneDescription;
+  
+  // Smart routing: Choose provider based on whether we need face consistency
+  const provider = selectImageProvider(includeMarshall, strategy, sceneDescription);
+  
+  if (!provider) {
+    console.warn(`[Image Generation] Provider setup failed. Returning fallback image.`);
     return getFallbackImage(context.postType);
   }
-  
-  const sceneDescription = context.scene || strategy.sceneDescription;
 
   console.log(`[Image Generation] Using AI generation - Strategy: ${strategy.imageType}, Include Marshall: ${includeMarshall}`);
   console.log(`[Image Generation] Scene: ${sceneDescription.substring(0, 100)}...`);
@@ -96,6 +96,7 @@ export async function generatePostImage(
     includeMarshall,
     sceneDescription,
     strategy,
+    provider,
   });
 
   // LOG: Full image generation prompt
@@ -110,14 +111,28 @@ export async function generatePostImage(
     ? 'portrait, headshot, looking at camera, smiling, posed, staged'
     : undefined;
 
-  const useFaceConsistency = includeMarshall && MARSHALL_FACE_REFERENCE && MARSHALL_FACE_REFERENCE !== BASE_IDENTITY_IMAGE;
+  // Check for LoRA configuration (preferred method for face consistency)
+  const loraUrl = process.env.MARSHALL_LORA_URL;
+  const loraTriggerWord = process.env.MARSHALL_LORA_TRIGGER_WORD || 'MARSHALL_UNIQ';
+  const useLoRA = includeMarshall && loraUrl;
+  
+  // Only use face consistency (flux-pulid) if LoRA is not available
+  // For Gemini (candid shots), we avoid showing face to prevent consistency issues
+  const isReplicate = provider.getName() === 'replicate';
+  const isFal = provider.getName() === 'fal';
+  const useFaceConsistency = !useLoRA && includeMarshall && isReplicate && MARSHALL_FACE_REFERENCE && MARSHALL_FACE_REFERENCE !== BASE_IDENTITY_IMAGE;
   
   console.log('\n========== IMAGE PROVIDER INPUT ==========');
   console.log('Provider:', provider.getName());
   console.log('Include Marshall:', includeMarshall);
-  console.log('Use Face Consistency:', useFaceConsistency);
-  if (useFaceConsistency) {
-    console.log('Face Reference:', MARSHALL_FACE_REFERENCE);
+  if (useLoRA) {
+    console.log('Using LoRA:', loraUrl);
+    console.log('Trigger Word:', loraTriggerWord);
+  } else {
+    console.log('Use Face Consistency:', useFaceConsistency, isReplicate ? '(Replicate profile image)' : '(Gemini candid - face not visible)');
+    if (useFaceConsistency) {
+      console.log('Face Reference:', MARSHALL_FACE_REFERENCE);
+    }
   }
   console.log('==========================================\n');
 
@@ -130,6 +145,9 @@ export async function generatePostImage(
       includeMarshall,
       faceReferenceUrl: useFaceConsistency ? MARSHALL_FACE_REFERENCE : undefined,
       idWeight: 0.6, // For Replicate face consistency
+      loraUrl: useLoRA ? loraUrl : undefined,
+      loraScale: useLoRA ? 0.8 : undefined, // Default LoRA strength
+      triggerWord: useLoRA ? loraTriggerWord : undefined,
     });
 
     // Download and save image
@@ -143,26 +161,28 @@ export async function generatePostImage(
 
 /**
  * Build image generation prompt with consistency and strategy
+ * 
+ * For Gemini (Nano Banana): Emphasize scenes without visible face (from behind, looking away, etc.)
+ * For Replicate: Use face consistency for profile images (rare)
  */
-function buildImagePrompt(context: ImageGenerationContext & { strategy: ImageStrategy; sceneDescription: string }): string {
-  const { includeMarshall, sceneDescription, strategy } = context;
+function buildImagePrompt(context: ImageGenerationContext & { strategy: ImageStrategy; sceneDescription: string; provider: ImageProviderInterface }): string {
+  const { includeMarshall, sceneDescription, strategy, provider } = context;
+  const isReplicate = provider.getName() === 'replicate';
+  const isProfileImage = isReplicate && includeMarshall; // Replicate = profile image (face visible)
 
   let prompt = '';
 
-  // CRITICAL: Start with composition instructions FIRST (before face description)
-  // This helps the model prioritize composition over face centering
   if (includeMarshall) {
-    prompt += `LANDSCAPE ORIENTATION, 16:9 aspect ratio. CANDID STREET PHOTOGRAPHY STYLE. Wide shot, full body or three-quarter view. Marshall is completely unaware of the camera, NOT looking at camera, NOT posing, NOT staged. Natural, unposed moment. Marshall is absorbed in an activity - sipping coffee, reading, walking, observing, talking - completely natural body language. Environmental portraiture with full context visible. Documentary photography style, not portrait photography. CRITICAL: Subject (Marshall) should be vertically centered in the frame to avoid getting cut off. Use rule of thirds horizontally, but center vertically for landscape format. `;
-  }
-
-  // Marshall's consistent appearance (use same description every time for consistency)
-  // CRITICAL: Add neutral/serious expression to avoid smiles and direct eye contact
-  const marshallDescription = `Marshall, a handsome 33-year-old tennis tour insider with ambiguous European appearance, olive skin, dark brown hair with light stubble, signature messy textured hair, expressive eyes, athletic build, 5'10" height. CRITICAL EXPRESSION: Completely neutral, serious, or contemplative facial expression. Mouth closed, lips together, NO smile, NO teeth showing, NO grinning, NO happy expression. Eyes looking away from camera - looking at street, coffee, phone, surroundings, or down. NOT looking at camera, NOT making eye contact, NOT aware of camera, NOT engaging with viewer. Completely absorbed, unaware, natural moment. `;
-
-  if (includeMarshall) {
-    prompt += marshallDescription;
-    // Additional composition reinforcement - emphasize candid, unaware of camera, vertical centering
-    prompt += `COMPOSITION: Landscape orientation (16:9), wide shot, full body visible. Marshall is completely absorbed in an activity, unaware of camera, NOT looking at camera, NOT posing, NOT smiling. Neutral or contemplative facial expression. Natural body language - relaxed shoulders, natural hand positions, authentic unposed moment. Marshall is part of the scene, environment clearly visible around him. Street photography aesthetic, candid moment captured naturally. Marshall's gaze is directed away from camera - looking at street, coffee, phone, or surroundings. CRITICAL: Subject vertically centered in frame (not too high, not too low) to prevent cropping issues in landscape format. `;
+    if (isProfileImage) {
+      // PROFILE IMAGE (Replicate) - Face-forward, looking at camera - RARE
+      prompt += `PORTRAIT PHOTOGRAPHY, 16:9 aspect ratio. Professional headshot or three-quarter portrait. Marshall looking directly at camera, confident expression, professional lighting. `;
+      prompt += `Marshall, a handsome 33-year-old tennis tour insider with ambiguous European appearance, olive skin, dark brown hair with light stubble, signature messy textured hair, expressive eyes, athletic build, 5'10" height. Professional portrait style, studio quality lighting. `;
+    } else {
+      // CANDID IMAGE (Gemini) - Face NOT visible or looking away - MOST COMMON
+      prompt += `LANDSCAPE ORIENTATION, 16:9 aspect ratio. CANDID STREET PHOTOGRAPHY STYLE. Wide shot, full body or three-quarter view. Marshall is completely unaware of the camera, NOT looking at camera, NOT posing, NOT staged. Natural, unposed moment. Marshall is absorbed in an activity - sipping coffee, reading, walking, observing, talking - completely natural body language. Environmental portraiture with full context visible. Documentary photography style, not portrait photography. `;
+      prompt += `CRITICAL: Marshall's face is either NOT visible (from behind, side profile, head down) OR looking away from camera (looking at street, coffee, phone, surroundings). Face should NOT be clearly visible to avoid consistency issues. Focus on body language, posture, and environment. `;
+      prompt += `Marshall, a 33-year-old tennis tour insider with ambiguous European appearance, olive skin, dark brown hair, athletic build, 5'10" height. Marshall is completely absorbed in the moment, unaware of camera, natural body language. `;
+    }
   }
 
   // Use strategy-based scene description
@@ -171,18 +191,128 @@ function buildImagePrompt(context: ImageGenerationContext & { strategy: ImageStr
   // Add style guide from strategy
   prompt += ` ${strategy.styleGuide}. `;
 
-  // Consistency and quality settings - emphasize candid, street photography
-  prompt += `Street photography style, candid moment, photorealistic, natural lighting, authentic unposed moment. Documentary photography aesthetic. NOT portrait photography. NOT studio photography. NOT staged. `;
-  
-  // Face consistency (if Marshall is included) - but emphasize it's about features, not framing
+  // Style settings based on image type
   if (includeMarshall) {
-    prompt += `Maintain consistent facial features and appearance across all images. Same person, same face structure, same hair style. `;
-    prompt += `CRITICAL CANDID PHOTOGRAPHY RULES: Landscape orientation (16:9). Marshall is completely unaware of camera, NOT looking at camera, NOT posing, NOT staged. Natural body language, authentic moment. Wide shot showing full context. Environment is prominent - cafe, street, park, etc. Marshall is absorbed in activity, not performing for camera. Street photography style, documentary aesthetic. NOT portrait photography. NOT looking at camera. NOT posed. NOT staged. CRITICAL: Subject vertically centered in landscape frame to avoid cropping. `;
+    if (isProfileImage) {
+      prompt += `Professional portrait photography, studio lighting, high quality, sharp focus on face. `;
+    } else {
+      prompt += `Street photography style, candid moment, photorealistic, natural lighting, authentic unposed moment. Documentary photography aesthetic. NOT portrait photography. NOT studio photography. NOT staged. Focus on environment and body language, not facial features. `;
+    }
+  } else {
+    prompt += `Photorealistic, natural lighting, high quality photography. `;
   }
 
-  prompt += `Landscape orientation, 16:9 aspect ratio, subject vertically centered. --ar 16:9 --style raw --quality 90`;
+  prompt += `Landscape orientation, 16:9 aspect ratio. --ar 16:9 --style raw --quality 90`;
 
   return prompt;
+}
+
+/**
+ * Smart provider selection based on image requirements
+ * 
+ * Updated Strategy with LoRA support:
+ * - LoRA-enabled providers (Fal.ai or Replicate with LoRA): BEST for Marshall lifestyle scenes
+ *   - Works for both candid AND portrait shots
+ *   - Maintains face consistency while allowing natural scenes
+ * - Replicate (flux-pulid): Fallback for profile images if LoRA not available
+ * - Gemini (Nano Banana): For non-Marshall images or if LoRA/Replicate unavailable
+ * 
+ * Priority:
+ * 1. LoRA-enabled provider (Fal.ai preferred, then Replicate with LoRA) if LoRA configured
+ * 2. Replicate (flux-pulid) for profile images if no LoRA
+ * 3. Gemini for everything else
+ */
+function selectImageProvider(
+  includeMarshall: boolean,
+  strategy: ImageStrategy,
+  sceneDescription: string
+): ImageProviderInterface | null {
+  const replicateToken = process.env.REPLICATE_API_TOKEN;
+  const geminiApiKey = process.env.GEMINI_API_KEY;
+  const falApiKey = process.env.FAL_API_KEY;
+  const useProModel = process.env.USE_GEMINI_PRO_IMAGE === 'true';
+  const baseIdentityImage = process.env.MARSHALL_FACE_REFERENCE_URL || '/assets/base_identity.png';
+  const loraUrl = process.env.MARSHALL_LORA_URL;
+  const loraTriggerWord = process.env.MARSHALL_LORA_TRIGGER_WORD || 'MARSHALL_UNIQ';
+
+  // If Marshall is NOT included → use Gemini (80-90% of images)
+  if (!includeMarshall) {
+    console.log(`[Image Provider] Marshall not included → Using Gemini (Nano Banana)`);
+    if (!geminiApiKey) {
+      console.warn(`[Image Provider] GEMINI_API_KEY not set, falling back to Replicate`);
+      if (!replicateToken) {
+        return null;
+      }
+      return new ReplicateProvider(replicateToken, baseIdentityImage);
+    }
+    return new ImagenProvider(geminiApiKey, useProModel);
+  }
+
+  // If Marshall IS included, prefer LoRA-enabled providers if LoRA is configured
+  if (loraUrl) {
+    // Prefer Fal.ai if configured and available
+    if (falApiKey) {
+      console.log(`[Image Provider] Marshall with LoRA → Using Fal.ai (Flux.1 + LoRA) for best lifestyle scenes`);
+      return new FalProvider(falApiKey, loraUrl, loraTriggerWord);
+    }
+    
+    // Fallback to Replicate with LoRA
+    if (replicateToken) {
+      console.log(`[Image Provider] Marshall with LoRA → Using Replicate (Flux.1 + LoRA) for lifestyle scenes`);
+      return new ReplicateProvider(replicateToken, baseIdentityImage);
+    }
+    
+    console.warn(`[Image Provider] LoRA configured but no provider available. Need FAL_API_KEY or REPLICATE_API_TOKEN.`);
+  }
+
+  // If no LoRA, check if it's a profile image (face-forward, looking at camera)
+  // This is RARE - only for specific profile shots
+  const sceneLower = sceneDescription.toLowerCase();
+  const strategyLower = strategy.styleGuide.toLowerCase();
+  const isPortrait = strategy.imageType === 'marshall-portrait';
+  const isLookingAtCamera = sceneLower.includes('looking at camera') || 
+                           sceneLower.includes('looking directly at camera') ||
+                           sceneLower.includes('facing camera') ||
+                           strategyLower.includes('looking at camera') ||
+                           strategyLower.includes('portrait') ||
+                           isPortrait;
+
+  // ONLY use Replicate (flux-pulid) for profile images if no LoRA - RARE
+  if (isPortrait || isLookingAtCamera) {
+    console.log(`[Image Provider] Marshall profile image (looking at camera) → Using Replicate (flux-pulid) for face consistency`);
+    if (!replicateToken) {
+      console.warn(`[Image Provider] REPLICATE_API_TOKEN not set, falling back to Gemini`);
+      if (!geminiApiKey) {
+        return null;
+      }
+      return new ImagenProvider(geminiApiKey, useProModel);
+    }
+    return new ReplicateProvider(replicateToken, baseIdentityImage);
+  }
+
+  // Everything else (candid, from behind, looking away) → use Gemini
+  // This avoids face consistency issues since face isn't visible anyway
+  // BUT if LoRA is available, we should use it for better consistency
+  if (loraUrl && (falApiKey || replicateToken)) {
+    if (falApiKey) {
+      console.log(`[Image Provider] Marshall candid with LoRA → Using Fal.ai (Flux.1 + LoRA) for best results`);
+      return new FalProvider(falApiKey, loraUrl, loraTriggerWord);
+    }
+    if (replicateToken) {
+      console.log(`[Image Provider] Marshall candid with LoRA → Using Replicate (Flux.1 + LoRA) for best results`);
+      return new ReplicateProvider(replicateToken, baseIdentityImage);
+    }
+  }
+  
+  console.log(`[Image Provider] Marshall candid/face not visible → Using Gemini (Nano Banana) for better scene composition`);
+  if (!geminiApiKey) {
+    console.warn(`[Image Provider] GEMINI_API_KEY not set, falling back to Replicate`);
+    if (!replicateToken) {
+      return null;
+    }
+    return new ReplicateProvider(replicateToken, baseIdentityImage);
+  }
+  return new ImagenProvider(geminiApiKey, useProModel);
 }
 
 /**

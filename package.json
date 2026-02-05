@@ -15,11 +15,15 @@
     "load:atp-calendar": "tsx scripts/load-atp-calendar-2026.ts"
   },
   "dependencies": {
+    "@fal-ai/client": "^1.9.0",
     "@floating-ui/dom": "^1.7.5",
     "@supabase/supabase-js": "^2.90.1",
     "@tiptap/extension-placeholder": "^3.18.0",
     "@tiptap/react": "^3.18.0",
     "@tiptap/starter-kit": "^3.18.0",
+    "archiver": "^7.0.1",
+    "dotenv": "^16.6.1",
+    "form-data": "^4.0.5",
     "markdown-it": "^14.1.0",
     "mixpanel-browser": "^2.74.0",
     "next": "16.1.1",

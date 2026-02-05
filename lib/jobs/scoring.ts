@@ -29,10 +29,24 @@ export async function scoreOpportunity(
   // Check content variety (penalize if we've posted about this recently)
   let contentVariety = 15; // Start with max points
   
+  // Check if we've posted about the exact topic recently
   if (await hasPostedAboutTopic(opportunity.topic, 3)) {
-    contentVariety -= 10; // Heavy penalty for recent topic
+    contentVariety -= 15; // Heavy penalty for recent topic (increased from 10)
   } else if (await hasPostedAboutTopic(opportunity.topic, 7)) {
-    contentVariety -= 5; // Light penalty for somewhat recent topic
+    contentVariety -= 8; // Medium penalty for somewhat recent topic (increased from 5)
+  }
+  
+  // Check if we've posted about the same tournament recently (for tournament/lifestyle posts)
+  if (opportunity.metadata?.tournament_id) {
+    const { hasPostedAboutTournament } = await import('./variety-tracker');
+    // Extract tournament name from topic or metadata
+    const tournamentName = opportunity.metadata.tournament_name || 
+                          opportunity.topic.split(' ').slice(0, -2).join(' '); // Remove "Preview" or "Day Update"
+    
+    if (tournamentName && await hasPostedAboutTournament(tournamentName, 7)) {
+      contentVariety -= 12; // Heavy penalty for same tournament (NEW)
+      console.log(`[Scoring] Heavy variety penalty: Posted about ${tournamentName} recently (-12 points)`);
+    }
   }
   
   // Penalize if we've posted in this category recently
@@ -47,8 +61,19 @@ export async function scoreOpportunity(
   };
   
   const category = categoryMap[opportunity.type] || 'analysis';
-  if (await hasPostedInCategory(category, 4)) {
-    contentVariety -= 3;
+  
+  // Stronger penalties for travel/lifestyle (most repetitive category)
+  if (category === 'travel') {
+    if (await hasPostedInCategory(category, 4)) {
+      contentVariety -= 8; // Increased from 3 for travel
+      console.log(`[Scoring] Travel category penalty: Posted travel content recently (-8 points)`);
+    } else if (await hasPostedInCategory(category, 7)) {
+      contentVariety -= 5; // Medium penalty for travel in last week
+    }
+  } else {
+    if (await hasPostedInCategory(category, 4)) {
+      contentVariety -= 5; // Increased from 3 for other categories
+    }
   }
   
   contentVariety = Math.max(0, contentVariety); // Don't go negative

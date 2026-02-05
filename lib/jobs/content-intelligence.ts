@@ -61,10 +61,20 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
       }
     }
     
-    activeTournaments.forEach(tournament => {
+    // Use for...of loop to handle async operations properly
+    for (const tournament of activeTournaments) {
       const location = tournament.location as { city?: string; country?: string };
       
-      // Tournament update opportunity
+      // CRITICAL: Check if we've already posted about this tournament recently
+      // Block both tournament updates AND lifestyle guides if we've posted about this tournament
+      const alreadyPostedAboutTournament = await hasPostedAboutTournament(tournament.name, 7);
+      
+      if (alreadyPostedAboutTournament) {
+        console.log(`[Content Intelligence] ⚠️ Skipping ${tournament.name} opportunities - already posted about this tournament in last 7 days`);
+        continue; // Skip this tournament entirely
+      }
+      
+      // Tournament update opportunity (only if we haven't posted about this tournament)
       opportunities.push({
         type: 'tournament',
         topic: `${tournament.name} Day Update`,
@@ -73,20 +83,26 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
         isLive: true,
         searchVolume: tournament.category === 'Grand Slam' ? 'high' : 'medium',
         hasViralPotential: tournament.category === 'Grand Slam',
-        metadata: { tournament_id: tournament.id },
+        metadata: { tournament_id: tournament.id, tournament_name: tournament.name },
       });
       
-      // Lifestyle opportunity (if we haven't posted about this location recently)
-      opportunities.push({
-        type: 'lifestyle',
-        topic: `Marshall's Guide to ${location.city}`,
-        description: `Lifestyle content about ${location.city} during ${tournament.name}`,
-        eventDate: new Date(tournament.start_date),
-        hasAffiliateLinks: true,
-        searchVolume: 'medium',
-        metadata: { tournament_id: tournament.id, location },
-      });
-    });
+      // Lifestyle opportunity (only if we haven't posted travel content recently)
+      // Check if we've posted travel content in last 4 days
+      const recentTravelPosts = await hasPostedInCategory('travel', 4);
+      if (!recentTravelPosts) {
+        opportunities.push({
+          type: 'lifestyle',
+          topic: `Marshall's Guide to ${location.city}`,
+          description: `Lifestyle content about ${location.city} during ${tournament.name}`,
+          eventDate: new Date(tournament.start_date),
+          hasAffiliateLinks: true,
+          searchVolume: 'medium',
+          metadata: { tournament_id: tournament.id, tournament_name: tournament.name, location },
+        });
+      } else {
+        console.log(`[Content Intelligence] ⚠️ Skipping ${tournament.name} lifestyle guide - posted travel content recently`);
+      }
+    }
   }
   
   // 2. Check upcoming tournaments (for previews)
@@ -103,28 +119,47 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
     console.log(`[Content Intelligence] Found ${upcomingTournaments.length} upcoming tournaments for previews (today: ${today})`);
     
     for (const tournament of upcomingTournaments) {
-      const startDate = new Date(tournament.start_date + 'T00:00:00');
-      const startDateOnly = tournament.start_date; // Just the date part for comparison
-      const hoursUntil = (startDate.getTime() - now.getTime()) / (1000 * 60 * 60);
+      const startDateOnly = tournament.start_date; // Just the date part (YYYY-MM-DD)
       
-      // CRITICAL: Only create preview if start_date is AFTER today
-      // Double-check with date string comparison (more reliable than hours)
-      // This is a safety check - the query should already filter these out
-      if (startDateOnly <= today) {
-        console.log(`[Content Intelligence] ⚠️ BLOCKED: Skipping ${tournament.name} preview - tournament already started (start_date: ${startDateOnly}, today: ${today})`);
+      // CRITICAL: Triple-check that tournament hasn't started
+      // Compare date strings directly (YYYY-MM-DD format)
+      // This is a safety check - Supabase query should already filter these out, but sometimes it doesn't
+      if (!startDateOnly) {
+        console.log(`[Content Intelligence] 🚫 BLOCKED: Skipping ${tournament.name} preview - invalid start_date (null/undefined)`);
         continue;
       }
       
-      // Additional safety: if hoursUntil is negative, tournament has started
+      // Strict date string comparison (YYYY-MM-DD format)
+      if (startDateOnly <= today) {
+        console.log(`[Content Intelligence] 🚫 BLOCKED: Skipping ${tournament.name} preview - tournament already started (start_date: ${startDateOnly}, today: ${today}, comparison: ${startDateOnly} <= ${today})`);
+        continue;
+      }
+      
+      console.log(`[Content Intelligence] ✓ ${tournament.name} passed date check (start_date: ${startDateOnly}, today: ${today})`);
+      
+      // Parse dates for hour calculation (use UTC to avoid timezone issues)
+      const startDate = new Date(startDateOnly + 'T00:00:00Z'); // Use UTC
+      const nowUTC = new Date(now.toISOString().split('T')[0] + 'T00:00:00Z'); // Use UTC for comparison
+      const hoursUntil = (startDate.getTime() - nowUTC.getTime()) / (1000 * 60 * 60);
+      
+      // Additional safety: if hoursUntil is negative or zero, tournament has started
       if (hoursUntil <= 0) {
-        console.log(`[Content Intelligence] ⚠️ BLOCKED: Skipping ${tournament.name} preview - tournament has already started (${Math.round(hoursUntil)} hours until start)`);
+        console.log(`[Content Intelligence] 🚫 BLOCKED: Skipping ${tournament.name} preview - tournament has already started (start_date: ${startDateOnly}, today: ${today}, hoursUntil: ${Math.round(hoursUntil)})`);
         continue;
       }
       
       // Check if we've already posted a preview for this tournament
+      // Use longer window (7 days) to prevent multiple previews
       const alreadyPostedPreview = await hasPostedAboutTournament(tournament.name, 7); // Check last 7 days for previews
       if (alreadyPostedPreview) {
-        console.log(`[Content Intelligence] ⚠️ Skipping ${tournament.name} preview - already posted about this tournament recently`);
+        console.log(`[Content Intelligence] ⚠️ Skipping ${tournament.name} preview - already posted about this tournament recently (last 7 days)`);
+        continue;
+      }
+      
+      // Also check if we've posted ANY content about this tournament (not just previews)
+      const alreadyPostedAboutTournament = await hasPostedAboutTournament(tournament.name, 7);
+      if (alreadyPostedAboutTournament) {
+        console.log(`[Content Intelligence] ⚠️ Skipping ${tournament.name} preview - already posted about this tournament in any form recently`);
         continue;
       }
       
@@ -133,7 +168,9 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
       // Create preview opportunity if tournament is between 24 hours and 5 days away
       // Don't create previews more than 5 days before (too early) or less than 24 hours before (too late)
       const hoursIn5Days = 5 * 24; // 120 hours
-      if (hoursUntil > 24 && hoursUntil <= hoursIn5Days) {
+      
+      // Final validation: Only create preview if hoursUntil is positive and within range
+      if (hoursUntil > 0 && hoursUntil > 24 && hoursUntil <= hoursIn5Days) {
         opportunities.push({
           type: 'tournament',
           topic: `${tournament.name} Preview`,
@@ -142,7 +179,9 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
           searchVolume: tournament.category === 'Grand Slam' ? 'high' : 'medium',
           metadata: { tournament_id: tournament.id },
         });
-        console.log(`[Content Intelligence] ✓ Created preview opportunity for ${tournament.name} (${Math.round(hoursUntil)} hours until start)`);
+        console.log(`[Content Intelligence] ✓ Created preview opportunity for ${tournament.name} (starts ${startDateOnly}, ${Math.round(hoursUntil)} hours until start)`);
+      } else if (hoursUntil <= 0) {
+        console.log(`[Content Intelligence] 🚫 BLOCKED: Skipping ${tournament.name} preview - tournament has already started (hoursUntil: ${Math.round(hoursUntil)})`);
       } else if (hoursUntil <= 24) {
         console.log(`[Content Intelligence] Skipping ${tournament.name} preview - too close to start (${Math.round(hoursUntil)} hours, need at least 24 hours)`);
       } else {
@@ -323,11 +362,57 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
     }
   }
   
+  // 5. Add diverse opportunity sources to ensure variety
+  
+  // 5a. Blast-from-past (nostalgia posts) - 1-2 per month
+  // Check if we've posted blast-from-past in last 14 days
+  const recentBlastFromPast = await hasPostedInCategory('lifestyle', 14); // Blast-from-past maps to lifestyle
+  const hasPostedBlastFromPast = await hasPostedAboutTopic('blast from past', 14) || 
+                                  await hasPostedAboutTopic('nostalgia', 14);
+  
+  if (!hasPostedBlastFromPast) {
+    // Create blast-from-past opportunity (low frequency, high engagement)
+    opportunities.push({
+      type: 'blast-from-past',
+      topic: `Blast from the Past: [Classic Tennis Moment]`,
+      description: `Nostalgia post about a classic tennis moment, player, or tournament from the past`,
+      searchVolume: 'low',
+      hasViralPotential: true, // Nostalgia can go viral
+      isEvergreen: true,
+      metadata: { isBlastFromPast: true },
+    });
+    console.log(`[Content Intelligence] ✓ Created blast-from-past opportunity (infrequent - last one was 14+ days ago)`);
+  }
+  
+  // 5b. General player profiles (top players) - if we haven't posted player content recently
+  const recentPlayerPosts = await hasPostedInCategory('analysis', 7); // Player posts map to analysis
+  if (!recentPlayerPosts) {
+    // Create player profile opportunity (not just up-and-coming)
+    const topPlayers = ['Carlos Alcaraz', 'Jannik Sinner', 'Novak Djokovic', 'Daniil Medvedev'];
+    const randomPlayer = topPlayers[Math.floor(Math.random() * topPlayers.length)];
+    
+    // Check if we've posted about this specific player recently
+    const hasPostedAboutPlayer = await hasPostedAboutTopic(randomPlayer.toLowerCase(), 14);
+    if (!hasPostedAboutPlayer) {
+      opportunities.push({
+        type: 'player',
+        topic: `Rising Star: ${randomPlayer}`,
+        description: `Deep dive on ${randomPlayer} - their game, recent form, and what makes them special`,
+        searchVolume: 'medium',
+        hasViralPotential: true,
+        metadata: { player_name: randomPlayer },
+      });
+      console.log(`[Content Intelligence] ✓ Created player profile opportunity for ${randomPlayer}`);
+    }
+  }
+  
+  // 5c. News opportunities (from RSS feeds) - if we have news data
+  // TODO: Implement when RSS feed is working properly
+  
   // TODO: Add more opportunity sources:
   // - Match results (when we have match data)
-  // - News feeds (RSS parsing)
   // - Weather-based travel tips
-  // - Blast from the past (scheduled, 1-2/month)
+  // - Gear opportunities (already handled via Marshall's state)
   
   return opportunities;
 }
@@ -377,17 +462,20 @@ export async function evaluateOpportunities(): Promise<{
           .single();
         
         if (tournament) {
-          // Block preview if tournament has started (start_date <= today)
-          if (tournament.start_date <= todayStr) {
+          // CRITICAL: Block preview if tournament has started (start_date <= today)
+          // Use strict string comparison for date strings (YYYY-MM-DD format)
+          if (!tournament.start_date || tournament.start_date <= todayStr) {
             console.log(`[Content Intelligence] 🚫 BLOCKED preview opportunity: "${input.topic}" for ${tournament.name} - tournament already started (start_date: ${tournament.start_date}, today: ${todayStr})`);
             return null;
           }
           // Block preview if tournament has ended (end_date <= today)
-          if (tournament.end_date <= todayStr) {
+          if (tournament.end_date && tournament.end_date <= todayStr) {
             console.log(`[Content Intelligence] 🚫 BLOCKED preview opportunity: "${input.topic}" for ${tournament.name} - tournament already ended (end_date: ${tournament.end_date}, today: ${todayStr})`);
             return null;
           }
-          console.log(`[Content Intelligence] ✓ Preview opportunity validated: "${input.topic}" for ${tournament.name} (starts ${tournament.start_date})`);
+          console.log(`[Content Intelligence] ✓ Preview opportunity validated: "${input.topic}" for ${tournament.name} (starts ${tournament.start_date}, today: ${todayStr})`);
+        } else {
+          console.log(`[Content Intelligence] ⚠️ WARNING: Preview opportunity "${input.topic}" references tournament ID ${input.metadata.tournament_id} but tournament not found in database`);
         }
       }
       return input;

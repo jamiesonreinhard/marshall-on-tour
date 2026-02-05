@@ -72,7 +72,7 @@ export async function getContentHistory(days: number = 7): Promise<ContentHistor
     });
     
     // Extract tournaments from title/content
-    // Check both full tournament names and common variations
+    // Method 1: Check for common tournament keywords
     const tournamentKeywords = [
       'australian open', 'french open', 'roland-garros', 'roland garros', 'wimbledon', 'us open',
       'indian wells', 'miami', 'monte carlo', 'madrid', 'rome', 'cincinnati',
@@ -85,14 +85,48 @@ export async function getContentHistory(days: number = 7): Promise<ContentHistor
       }
     });
     
-    // Also check if title contains tournament name directly (for recaps/previews)
-    // e.g., "Australian Open 2026: Tournament Recap" should be detected
+    // Method 2: Extract tournament names from title (for any tournament, not just keywords)
+    // Pattern: "Tournament Name Preview/Recap/Guide" or "Tournament Name 2026"
     const titleLower = post.title.toLowerCase();
+    
+    // Check for tournament name patterns in title
+    // Examples: "Open Occitanie Preview", "Montpellier Travel Guide", "ATP 250 Montpellier"
+    const tournamentPatterns = [
+      /(?:^|\s)([a-z]+(?:\s+[a-z]+)*)\s+(?:preview|recap|guide|travel|2026|day update)/i,
+      /(?:^|\s)(open\s+[a-z]+)/i,
+      /(?:^|\s)(atp\s+\d+\s+[a-z]+)/i,
+    ];
+    
+    tournamentPatterns.forEach(pattern => {
+      const match = titleLower.match(pattern);
+      if (match && match[1]) {
+        const tournamentName = match[1].trim().toLowerCase();
+        if (tournamentName && !tournaments.includes(tournamentName)) {
+          tournaments.push(tournamentName);
+        }
+      }
+    });
+    
+    // Also check for tournament keywords in title
     tournamentKeywords.forEach(tournament => {
       if (titleLower.includes(tournament) && !tournaments.includes(tournament)) {
         tournaments.push(tournament);
       }
     });
+    
+    // Method 3: Extract city names that might be tournaments
+    // If title contains city name + "travel guide" or "preview", it's likely a tournament post
+    const cityTournamentPattern = /(?:guide to|preview|travel guide|at)\s+([a-z]+(?:\s+[a-z]+)*)/i;
+    const cityMatch = titleLower.match(cityTournamentPattern);
+    if (cityMatch && cityMatch[1]) {
+      const cityName = cityMatch[1].trim().toLowerCase();
+      // Check if this looks like a tournament-related post
+      if (titleLower.includes('open') || titleLower.includes('atp') || titleLower.includes('tournament')) {
+        if (!tournaments.includes(cityName)) {
+          tournaments.push(cityName);
+        }
+      }
+    }
   });
   
   return {

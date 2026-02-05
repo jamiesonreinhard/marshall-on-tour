@@ -12,6 +12,7 @@ const adminNavItems = [
   { href: "/admin/calendar", label: "Calendar", icon: "📅" },
   { href: "/admin/marshall-state", label: "Marshall's State", icon: "👤" },
   { href: "/admin/marshall-face-upload", label: "Upload Face", icon: "🖼️" },
+  { href: "/admin/test-image-generation", label: "Test Images", icon: "🎨" },
   { href: "/admin/board", label: "Project Board", icon: "📋" },
   { href: "/admin/jobs", label: "Jobs", icon: "⚙️" },
   { href: "/admin/costs", label: "Costs", icon: "💰" },
