@@ -61,35 +61,41 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
       }
     }
     
+    // Track which tournaments we've already created opportunities for in THIS run
+    // This prevents creating multiple opportunities for the same tournament in one run
+    const tournamentsProcessed = new Set<string>();
+    
     // Use for...of loop to handle async operations properly
     for (const tournament of activeTournaments) {
       const location = tournament.location as { city?: string; country?: string };
       
       // CRITICAL: Check if we've already posted about this tournament recently
-      // Block both tournament updates AND lifestyle guides if we've posted about this tournament
+      // Check both tournament name AND city name (catches posts that mention city but not full tournament name)
       const alreadyPostedAboutTournament = await hasPostedAboutTournament(tournament.name, 7);
+      const alreadyPostedAboutCity = location.city ? await hasPostedAboutTopic(location.city, 7) : false;
       
-      if (alreadyPostedAboutTournament) {
-        console.log(`[Content Intelligence] ⚠️ Skipping ${tournament.name} opportunities - already posted about this tournament in last 7 days`);
+      if (alreadyPostedAboutTournament || alreadyPostedAboutCity) {
+        console.log(`[Content Intelligence] ⚠️ Skipping ${tournament.name} opportunities - already posted about this tournament (${alreadyPostedAboutTournament ? 'tournament name' : ''} ${alreadyPostedAboutCity ? 'city name' : ''}) in last 7 days`);
         continue; // Skip this tournament entirely
       }
       
-      // Tournament update opportunity (only if we haven't posted about this tournament)
-      opportunities.push({
-        type: 'tournament',
-        topic: `${tournament.name} Day Update`,
-        description: `Daily update from ${tournament.name}`,
-        eventDate: new Date(tournament.start_date),
-        isLive: true,
-        searchVolume: tournament.category === 'Grand Slam' ? 'high' : 'medium',
-        hasViralPotential: tournament.category === 'Grand Slam',
-        metadata: { tournament_id: tournament.id, tournament_name: tournament.name },
-      });
+      // CRITICAL: Check if we've already created an opportunity for this tournament in THIS run
+      // This prevents creating both tournament update AND lifestyle guide in the same run
+      if (tournamentsProcessed.has(tournament.id)) {
+        console.log(`[Content Intelligence] ⚠️ Skipping ${tournament.name} - already created opportunity for this tournament in this run`);
+        continue;
+      }
       
-      // Lifestyle opportunity (only if we haven't posted travel content recently)
-      // Check if we've posted travel content in last 4 days
+      // Mark this tournament as processed
+      tournamentsProcessed.add(tournament.id);
+      
+      // Only create ONE opportunity per tournament per run
+      // Prefer lifestyle guide (better affiliate potential) over tournament update
+      // But check if we've posted travel content recently
       const recentTravelPosts = await hasPostedInCategory('travel', 4);
+      
       if (!recentTravelPosts) {
+        // Create lifestyle guide (better for affiliate revenue)
         opportunities.push({
           type: 'lifestyle',
           topic: `Marshall's Guide to ${location.city}`,
@@ -99,8 +105,20 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
           searchVolume: 'medium',
           metadata: { tournament_id: tournament.id, tournament_name: tournament.name, location },
         });
+        console.log(`[Content Intelligence] ✓ Created lifestyle guide opportunity for ${tournament.name} (${location.city})`);
       } else {
-        console.log(`[Content Intelligence] ⚠️ Skipping ${tournament.name} lifestyle guide - posted travel content recently`);
+        // If we've posted travel recently, create tournament update instead
+        opportunities.push({
+          type: 'tournament',
+          topic: `${tournament.name} Day Update`,
+          description: `Daily update from ${tournament.name}`,
+          eventDate: new Date(tournament.start_date),
+          isLive: true,
+          searchVolume: tournament.category === 'Grand Slam' ? 'high' : 'medium',
+          hasViralPotential: tournament.category === 'Grand Slam',
+          metadata: { tournament_id: tournament.id, tournament_name: tournament.name },
+        });
+        console.log(`[Content Intelligence] ✓ Created tournament update opportunity for ${tournament.name} (travel content posted recently, using update instead)`);
       }
     }
   }
@@ -439,7 +457,10 @@ export async function evaluateOpportunities(): Promise<{
   // Find all opportunities
   const opportunityInputs = await findContentOpportunities();
   
+  console.log(`[Content Intelligence] Found ${opportunityInputs.length} raw opportunities`);
+  
   if (opportunityInputs.length === 0) {
+    console.log(`[Content Intelligence] No opportunities found`);
     return {
       bestOpportunity: null,
       allOpportunities: [],
@@ -485,6 +506,11 @@ export async function evaluateOpportunities(): Promise<{
   // Filter out null values (blocked opportunities)
   const filteredOpportunities = validOpportunities.filter((opp): opp is ContentOpportunityInput => opp !== null);
   
+  const blockedCount = opportunityInputs.length - filteredOpportunities.length;
+  if (blockedCount > 0) {
+    console.log(`[Content Intelligence] Filtered out ${blockedCount} invalid/blocked opportunities`);
+  }
+  
   if (filteredOpportunities.length === 0) {
     console.log(`[Content Intelligence] All opportunities were filtered out`);
     return {
@@ -493,6 +519,8 @@ export async function evaluateOpportunities(): Promise<{
       postingStatus,
     };
   }
+  
+  console.log(`[Content Intelligence] ${filteredOpportunities.length} valid opportunities remaining`);
   
   // Score and rank opportunities
   const scoredOpportunities = await Promise.all(
@@ -538,14 +566,30 @@ export async function evaluateOpportunities(): Promise<{
   // Get best opportunity (highest score)
   const bestOpportunity = ranked.length > 0 ? ranked[0] : null;
   
+  // Log ranking summary
+  console.log(`\n[Content Intelligence] Opportunity Ranking Summary:`);
+  console.log(`  Total opportunities: ${ranked.length}`);
+  if (ranked.length > 0) {
+    console.log(`  Top 5 opportunities:`);
+    ranked.slice(0, 5).forEach((opp, idx) => {
+      console.log(`    ${idx + 1}. [${opp.type}] ${opp.topic}`);
+      console.log(`       Score: ${opp.totalScore} (Timeliness: ${opp.timeliness}, Affiliate: ${opp.affiliatePotential}, SEO: ${opp.seoValue}, Variety: ${opp.contentVariety}, Social: ${opp.socialEngagement})`);
+    });
+  }
+  
   // Only return best opportunity if score is above threshold
   const threshold = 50; // Minimum score to generate post
   if (bestOpportunity && bestOpportunity.totalScore < threshold) {
+    console.log(`\n[Content Intelligence] ⚠️  Best opportunity score (${bestOpportunity.totalScore}) below threshold (${threshold})`);
     return {
       bestOpportunity: null,
       allOpportunities: ranked,
       postingStatus,
     };
+  }
+  
+  if (bestOpportunity) {
+    console.log(`\n[Content Intelligence] ✅ Selected: [${bestOpportunity.type}] ${bestOpportunity.topic} (Score: ${bestOpportunity.totalScore})`);
   }
   
   return {
@@ -565,59 +609,104 @@ export async function runContentIntelligenceJob(): Promise<{
   action: 'generated' | 'skipped' | 'no_opportunity';
   opportunity?: ContentOpportunity;
   reason?: string;
+  postId?: string;
+  log?: any;
 }> {
+  // Start comprehensive logging
+  const { startContentLog, logOpportunities, logSelectedOpportunity, logPostingStatus, saveContentLog, printLogSummary } = await import('./content-logger');
+  const jobId = startContentLog();
+  
   try {
-    const { bestOpportunity, postingStatus } = await evaluateOpportunities();
+    console.log(`\n${'='.repeat(80)}`);
+    console.log(`[Content Intelligence] Job Started: ${jobId}`);
+    console.log('='.repeat(80));
+    
+    const { bestOpportunity, allOpportunities, postingStatus } = await evaluateOpportunities();
+    
+    // Log opportunities found
+    logOpportunities(allOpportunities);
+    
+    // Log posting status
+    logPostingStatus(postingStatus);
     
     if (!bestOpportunity) {
+      const log = await saveContentLog();
+      printLogSummary();
       return {
         success: true,
         action: 'no_opportunity',
         reason: postingStatus.reason || 'No high-scoring opportunities found',
+        log,
       };
     }
     
+    // Log selected opportunity
+    logSelectedOpportunity(bestOpportunity, `Highest scoring opportunity (${bestOpportunity.totalScore} points)`);
+    
     if (!postingStatus.canPostBlog) {
+      const log = await saveContentLog();
+      printLogSummary();
       return {
         success: true,
         action: 'skipped',
         opportunity: bestOpportunity,
         reason: postingStatus.reason || 'Cannot post blog today',
+        log,
       };
     }
     
-    // Generate post from opportunity
+    // Generate post from opportunity using V2 generator (with handlers)
     // Import and call post generation function directly
     try {
-      const { generatePostFromOpportunity } = await import('./post-generator');
-      const result = await generatePostFromOpportunity(bestOpportunity, {
+      const { generatePostFromOpportunityV2 } = await import('./post-generator-v2');
+      const result = await generatePostFromOpportunityV2(bestOpportunity, {
         publish: false, // Always save as draft for review
       });
       
       if (result.success) {
+        const log = await saveContentLog();
+        printLogSummary();
         return {
           success: true,
           action: 'generated',
           opportunity: bestOpportunity,
+          postId: result.postId,
+          log,
         };
       } else {
         throw new Error(result.error || 'Failed to generate post');
       }
     } catch (error: any) {
       console.error('Error generating post:', error);
+      const { logGenerationResult } = await import('./content-logger');
+      logGenerationResult({
+        success: false,
+        error: error.message,
+      });
+      const log = await saveContentLog();
+      printLogSummary();
       return {
         success: false,
         action: 'skipped',
         opportunity: bestOpportunity,
         reason: `Failed to generate post: ${error.message}`,
+        log,
       };
     }
   } catch (error: any) {
     console.error('Content intelligence job error:', error);
+    const { logGenerationResult } = await import('./content-logger');
+    logGenerationResult({
+      success: false,
+      error: error.message,
+    });
+    const log = await saveContentLog();
+    printLogSummary();
     return {
       success: false,
       action: 'skipped',
       reason: error.message,
+      log,
     };
   }
 }

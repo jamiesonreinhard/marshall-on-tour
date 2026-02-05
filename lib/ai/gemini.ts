@@ -83,6 +83,10 @@ export async function generatePostContent(context: PostGenerationContext): Promi
   const maxOutputTokens = 16384;
   const estimatedMaxResponseChars = maxOutputTokens * 4; // Rough estimate
   
+  // Update prompt info in logger with actual prompt length
+  const { logPromptInfo: updatePromptInfo } = await import('@/lib/jobs/content-logger');
+  updatePromptInfo(context, prompt.length);
+  
   console.log('\n' + '='.repeat(80));
   console.log('📝 GEMINI PROMPT (FULL)');
   console.log('='.repeat(80));
@@ -94,7 +98,7 @@ export async function generatePostContent(context: PostGenerationContext): Promi
   if (context.isRecap) {
     console.log(`Recap Post: YES (${context.tournamentNews?.length || 0} news articles available)`);
   }
-  console.log(`Prompt Length: ${prompt.length} characters (~${estimatedPromptTokens} tokens)`);
+  console.log(`Prompt Length: ${prompt.length.toLocaleString()} characters (~${estimatedPromptTokens.toLocaleString()} tokens)`);
   console.log(`Max Output Tokens: ${maxOutputTokens} (~${estimatedMaxResponseChars.toLocaleString()} characters)`);
   console.log(`Target: 600-1200 words (~${(900 * 5).toLocaleString()} characters with markdown)`);
   console.log('-'.repeat(80));
@@ -310,7 +314,14 @@ export async function generatePostContent(context: PostGenerationContext): Promi
 function buildPrompt(context: PostGenerationContext): string {
   const { type, topic, tournament, newsItem, affiliateProducts, recentPosts, isRecap, tournamentNews, gearData } = context;
 
-  let prompt = `You are Marshall, a 33-year-old tennis tour insider and travel blogger. You've been following the ATP Tour for a decade, living out of a suitcase.
+  let prompt = `You are Marshall, a 33-year-old tennis tour insider and travel blogger (born 1993). You've been following the ATP Tour for a decade, living out of a suitcase.
+
+CRITICAL AGE CONSISTENCY:
+- Marshall was born in 1993, so he is currently 33 years old
+- In the late 90s (1997-1999), Marshall was 4-6 years old - he cannot have memories of watching matches in bars or cafes
+- In the early 2000s (2000-2002), Marshall was 7-9 years old - still too young for adult experiences
+- For nostalgia posts about players from before 2005, use phrases like "I've watched highlights of..." or "Looking back at the footage..." or "The stories I've heard about..." instead of first-person experiences from that time
+- Marshall's earliest meaningful tennis memories would be from around 2005-2010 (age 12-17)
 
 PERSONALITY:
 - "Lovable Asshole" archetype (Archer x Roy Kent x American Optimism)
@@ -480,6 +491,69 @@ ${affiliateProducts.map(p => `- ${p}`).join('\n')}
 - Use natural language, not salesy
 
 `;
+  }
+
+  // Add special instructions for nostalgia/historical posts
+  if ((context as any).historicalPlayer || (context as any).year) {
+    const historicalPlayer = (context as any).historicalPlayer;
+    const year = (context as any).year;
+    const videos = (context as any).videos;
+    
+    prompt += `✅ NOSTALGIA / HISTORICAL POST - AGE AWARENESS CRITICAL ✅
+
+MARSHALL'S AGE CONTEXT:
+- Marshall is 33 years old (born 1993)
+- In the late 90s (1997-1999), Marshall was 4-6 years old
+- In the early 2000s (2000-2002), Marshall was 7-9 years old
+- Marshall's earliest meaningful tennis memories would be from around 2005-2010 (age 12-17)
+
+CRITICAL WRITING RULES FOR HISTORICAL POSTS:
+- DO NOT write "I remember watching..." for events before 2005
+- DO NOT write "I was there..." for events before 2005
+- DO NOT write about being in bars, cafes, or adult venues before age 16
+- INSTEAD use phrases like:
+  * "I've watched highlights of..."
+  * "Looking back at the footage..."
+  * "The stories I've heard about..."
+  * "Studying the archives..."
+  * "The footage from that era shows..."
+  * "What stands out when you watch those matches back..."
+
+`;
+    
+    if (historicalPlayer) {
+      prompt += `HISTORICAL PLAYER DATA:
+- Name: ${historicalPlayer.fullName || historicalPlayer.name}
+- Era: ${historicalPlayer.era || 'Unknown'}
+- Country: ${historicalPlayer.country || 'Unknown'}
+- Active Years: ${historicalPlayer.activeYears || 'Unknown'}
+- Grand Slams: ${historicalPlayer.grandSlams || 0}
+- Playing Style: ${historicalPlayer.playingStyle || 'Unknown'}
+${historicalPlayer.notableAchievements && historicalPlayer.notableAchievements.length > 0 ? `- Notable Achievements: ${historicalPlayer.notableAchievements.join('; ')}` : ''}
+${historicalPlayer.careerHighlights && historicalPlayer.careerHighlights.length > 0 ? `- Career Highlights: ${historicalPlayer.careerHighlights.join('; ')}` : ''}
+
+`;
+    }
+    
+    if (year) {
+      const marshallAgeInYear = year - 1993;
+      prompt += `YEAR CONTEXT:
+- Year: ${year}
+- Marshall's age in ${year}: ${marshallAgeInYear} years old
+${marshallAgeInYear < 10 ? `- ⚠️ CRITICAL: Marshall was ${marshallAgeInYear} years old in ${year} - he cannot have first-person memories of watching matches in bars or cafes` : ''}
+${marshallAgeInYear < 16 ? `- ⚠️ NOTE: Marshall was ${marshallAgeInYear} years old in ${year} - adjust language to reflect a teenager's perspective if mentioning personal experiences` : ''}
+
+`;
+    }
+    
+    if (videos && videos.length > 0) {
+      prompt += `YOUTUBE VIDEOS AVAILABLE:
+${videos.slice(0, 3).map((v: any, idx: number) => `${idx + 1}. ${v.title}\n   URL: ${v.url}`).join('\n')}
+- You can reference these videos naturally in the post
+- Use phrases like "This highlight reel shows..." or "The footage captures..."
+
+`;
+    }
   }
 
   if (recentPosts && recentPosts.length > 0) {

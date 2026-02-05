@@ -31,12 +31,20 @@ export default async function AdminPostsPage() {
           <h1 className="text-3xl font-bold text-gray-900 mb-2">Posts</h1>
           <p className="text-gray-600">Manage your blog posts</p>
         </div>
-        <Link
-          href="/admin/posts/new"
-          className="px-4 py-2 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
-        >
-          New Post
-        </Link>
+        <div className="flex items-center space-x-3">
+          <Link
+            href="/admin/posts/generate"
+            className="px-4 py-2 bg-gray-900 text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
+          >
+            Generate Post (AI)
+          </Link>
+          <Link
+            href="/admin/posts/new"
+            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+          >
+            New Post (Manual)
+          </Link>
+        </div>
       </div>
 
       <PostsList posts={posts || []} />

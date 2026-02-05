@@ -12,7 +12,8 @@
     "supabase:push": "supabase db push",
     "supabase:pull": "supabase db pull",
     "supabase:reset": "supabase db reset",
-    "load:atp-calendar": "tsx scripts/load-atp-calendar-2026.ts"
+    "load:atp-calendar": "tsx scripts/load-atp-calendar-2026.ts",
+    "generate:hero": "tsx scripts/generate-hero-image.ts"
   },
   "dependencies": {
     "@fal-ai/client": "^1.9.0",

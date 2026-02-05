@@ -6,12 +6,12 @@ import { getAllPosts } from "@/lib/posts";
 export const revalidate = 3600;
 
 /**
- * VARIANT 2: Magazine Grid Layout
- * - Hero image integrated with intro text
- * - Multiple posts in a grid immediately visible
- * - Modern magazine-style layout
+ * VARIANT 4B: Full-Width Hero Banner (Modified)
+ * - Large hero image banner with intro text overlay (not newest post)
+ * - All posts shown equally in grid below
+ * - Dramatic but doesn't favor newest post
  */
-export default async function HomeVariant2() {
+export default async function HomeVariant4B() {
   const latestPosts = await getAllPosts(6);
 
   return (
@@ -45,60 +45,72 @@ export default async function HomeVariant2() {
         </div>
       </nav>
 
-      {/* Hero Section - Compact with Image */}
-      <section className="max-w-[1600px] mx-auto px-6 sm:px-8 py-12">
-        <div className="grid lg:grid-cols-3 gap-8 items-center">
-          {/* Hero Image */}
-          <div className="lg:col-span-1">
-            <div className="aspect-[3/4] relative rounded-2xl overflow-hidden shadow-xl">
-              <Image
-                src="/assets/base_identity.png"
-                alt="Marshall on tour"
-                fill
-                className="object-cover"
-                priority
-              />
+      {/* Hero Banner - Using Hero Image, Not Newest Post */}
+      <section className="relative">
+        <div className="relative h-[70vh] min-h-[600px] max-h-[800px] overflow-hidden">
+          <Image
+            src="/assets/hero_landscape.png"
+            alt="Marshall on tour"
+            fill
+            className="object-cover"
+            priority
+          />
+          {/* Darker base overlay for better contrast */}
+          <div className="absolute inset-0 bg-black/50" />
+          {/* Left-to-right gradient: darker on left, lighter on right */}
+          <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/50 to-black/30" />
+          {/* Top-to-bottom gradient for text area at bottom */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/60 to-transparent" />
+          
+          {/* Content Overlay */}
+          <div className="absolute inset-0 flex items-end">
+            <div className="max-w-[1600px] mx-auto px-6 sm:px-8 pb-16 w-full">
+              <div className="max-w-3xl">
+                <p className="text-sm font-medium text-white uppercase tracking-wider mb-4 drop-shadow-lg">
+                  The Tour, from the Inside
+                </p>
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 flex-shrink-0 rounded-full overflow-hidden border-2 border-white/30 shadow-lg">
+                    <Image
+                      src="/assets/base_identity.png"
+                      alt="Marshall"
+                      width={80}
+                      height={80}
+                      className="object-cover w-full h-full"
+                    />
+                  </div>
+                  <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white drop-shadow-lg">
+                    I'm Marshall. For the past decade, I've lived out of a suitcase following the ATP Tour.
+                  </h1>
+                </div>
+                <p className="text-xl text-white leading-relaxed mb-6 drop-shadow-md">
+                  This is where I share what I've learned about tennis, travel, and the gear that actually matters.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <Link
+                    href="/blog"
+                    className="inline-flex items-center justify-center px-6 py-3 bg-white text-zinc-900 rounded-full font-medium hover:bg-zinc-100 transition-colors"
+                  >
+                    Read the Blog
+                  </Link>
+                  <Link
+                    href="/about"
+                    className="inline-flex items-center justify-center px-6 py-3 border-2 border-white text-white rounded-full font-medium hover:bg-white/10 transition-colors"
+                  >
+                    About Marshall
+                  </Link>
+                </div>
+                <p className="text-sm text-white font-medium tracking-wide uppercase mt-6 drop-shadow-md">
+                  Serve First. Travel Always.
+                </p>
+              </div>
             </div>
-          </div>
-
-          {/* Intro Text */}
-          <div className="lg:col-span-2 space-y-6">
-            <div>
-              <p className="text-sm font-medium text-zinc-500 uppercase tracking-wider mb-4">
-                The Tour, from the Inside
-              </p>
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-zinc-900 tracking-tight leading-tight mb-6">
-                I'm Marshall. For the past decade, I've lived out of a suitcase following the ATP Tour.
-              </h1>
-              <p className="text-xl text-zinc-600 leading-relaxed max-w-2xl">
-                This is where I share what I've learned about tennis, travel, and the gear that actually matters.
-              </p>
-            </div>
-            
-            <div className="flex flex-col sm:flex-row gap-4 pt-4">
-              <Link
-                href="/blog"
-                className="inline-flex items-center justify-center px-6 py-3 bg-zinc-900 text-white rounded-full font-medium hover:bg-zinc-800 transition-colors"
-              >
-                Read the Blog
-              </Link>
-              <Link
-                href="/about"
-                className="inline-flex items-center justify-center px-6 py-3 border border-zinc-300 text-zinc-900 rounded-full font-medium hover:bg-zinc-50 transition-colors"
-              >
-                About Marshall
-              </Link>
-            </div>
-
-            <p className="text-sm text-zinc-500 font-medium tracking-wide uppercase pt-2">
-              Serve First. Travel Always.
-            </p>
           </div>
         </div>
       </section>
 
-      {/* Posts Grid - Immediately Visible */}
-      <section className="max-w-[1600px] mx-auto px-6 sm:px-8 py-12">
+      {/* Posts Grid - All Posts Shown Equally */}
+      <section className="max-w-[1600px] mx-auto px-6 sm:px-8 py-16">
         <div className="flex items-center justify-between mb-8">
           <div>
             <h2 className="text-3xl font-bold text-zinc-900 mb-2">Latest from the Tour</h2>
@@ -117,16 +129,14 @@ export default async function HomeVariant2() {
 
         {latestPosts.length > 0 ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {latestPosts.map((post, index) => (
+            {latestPosts.map((post) => (
               <Link
                 key={post.slug}
                 href={`/blog/${post.slug}`}
-                className={`group block ${index === 0 ? 'md:col-span-2 lg:col-span-1' : ''}`}
+                className="group block"
               >
-                <article className="space-y-4 h-full">
-                  <div className={`relative rounded-xl overflow-hidden bg-zinc-100 shadow-lg ${
-                    index === 0 ? 'aspect-[4/3]' : 'aspect-[4/3]'
-                  }`}>
+                <article className="space-y-4">
+                  <div className="aspect-[4/3] relative rounded-xl overflow-hidden bg-zinc-100 shadow-lg">
                     <Image
                       src={post.featuredImage}
                       alt={post.title}
@@ -134,21 +144,16 @@ export default async function HomeVariant2() {
                       className="object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                     <div className="absolute top-4 left-4">
-                      <span className="px-3 py-1 bg-white/90 backdrop-blur-sm rounded-full text-xs font-medium text-zinc-900">
+                      <span className="px-3 py-1 bg-white/90 backdrop-blur-sm rounded-full text-sm font-medium text-zinc-900">
                         {post.category}
                       </span>
                     </div>
-                    {index === 0 && (
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
-                    )}
                   </div>
                   <div className="space-y-2">
                     <p className="text-sm text-zinc-500">
                       {new Date(post.date).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                     </p>
-                    <h3 className={`font-semibold text-zinc-900 group-hover:text-zinc-600 transition-colors ${
-                      index === 0 ? 'text-2xl' : 'text-xl'
-                    }`}>
+                    <h3 className="text-xl font-semibold text-zinc-900 group-hover:text-zinc-600 transition-colors">
                       {post.title}
                     </h3>
                     <p className="text-zinc-600 leading-relaxed line-clamp-2">
@@ -200,7 +205,7 @@ export default async function HomeVariant2() {
               Subscribe
             </button>
           </div>
-          <p className="text-xs text-zinc-500">
+          <p className="text-sm text-zinc-500">
             No spam. Unsubscribe anytime.
           </p>
         </div>
@@ -253,7 +258,7 @@ export default async function HomeVariant2() {
             </div>
           </div>
           <div className="pt-8 border-t border-zinc-200">
-            <p className="text-xs text-zinc-500 text-center">
+            <p className="text-sm text-zinc-500 text-center">
               © 2026 Marshall. All rights reserved.{" "}
               <Link href="/about" className="hover:text-zinc-700 underline">
                 AI Disclosure

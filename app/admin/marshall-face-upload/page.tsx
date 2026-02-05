@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { AdminHeader } from '@/app/admin/components/AdminHeader';
 
 export default function MarshallFaceUploadPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -55,9 +54,8 @@ export default function MarshallFaceUploadPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <AdminHeader />
-      <div className="max-w-4xl mx-auto px-4 py-8">
+    <div>
+      <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">Upload Marshall Face Reference</h1>
         
         <div className="bg-white rounded-lg shadow p-6">

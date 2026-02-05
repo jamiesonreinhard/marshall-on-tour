@@ -55,6 +55,9 @@ export async function factCheckPost(
   // Universal checks (apply to all types)
   issues.push(...checkUniversalIssues(content, context));
   
+  // CRITICAL: Check Marshall's age consistency (especially for nostalgia posts)
+  issues.push(...checkMarshallAgeConsistency(content, context));
+  
   // CRITICAL: Check for embedded field labels (Title:, Excerpt:, Content:)
   // These should NEVER be in the content - they're separate fields!
   issues.push(...checkForEmbeddedLabels(content));
@@ -312,6 +315,130 @@ function checkClaimsAgainstNews(
   }
   
   return issues;
+}
+
+/**
+ * Check Marshall's age consistency
+ * Marshall is 33 years old (born 1993), so he can't have memories from before he was old enough
+ * Especially important for nostalgia posts
+ */
+function checkMarshallAgeConsistency(
+  content: string,
+  context: PostGenerationContext
+): FactCheckIssue[] {
+  const issues: FactCheckIssue[] = [];
+  const contentLower = content.toLowerCase();
+  
+  // Marshall's age: 33 years old (born 1993)
+  const marshallBirthYear = 1993;
+  const currentYear = new Date().getFullYear();
+  const marshallAge = currentYear - marshallBirthYear; // 33 in 2026
+  
+  // Patterns that suggest Marshall was present/watching/experiencing something
+  const experiencePatterns = [
+    /(?:i|i'|i was|i remember|i watched|i saw|i witnessed|i experienced|i was there|i attended|i traveled|i visited|from.*bar|in.*cafe|on.*terrace|overlooking)/i,
+  ];
+  
+  // Extract years mentioned in the content
+  const yearMatches = content.match(/\b(19[6-9]\d|20[01]\d)\b/g);
+  
+  if (yearMatches) {
+    for (const yearStr of yearMatches) {
+      const year = parseInt(yearStr);
+      
+      // Calculate Marshall's age in that year
+      const marshallAgeInYear = year - marshallBirthYear;
+      
+      // Check if content suggests Marshall was present/experiencing something
+      const hasExperienceLanguage = experiencePatterns.some(pattern => pattern.test(content));
+      
+      if (hasExperienceLanguage && marshallAgeInYear < 10) {
+        // Marshall was too young to have these experiences
+        const surroundingText = extractSurroundingText(content, yearStr, 100);
+        
+        issues.push({
+          type: 'factual_error',
+          severity: 'high',
+          originalText: surroundingText,
+          issue: `Marshall is 33 years old (born 1993). In ${year}, he would have been ${marshallAgeInYear} years old. The content suggests he was watching/experiencing something from a bar or cafe, which doesn't make sense for a ${marshallAgeInYear}-year-old child.`,
+          suggestion: `Rewrite to reflect Marshall's actual age. For ${year}, Marshall would have been ${marshallAgeInYear} years old. Use phrases like "I've watched highlights of..." or "Looking back at the footage..." or "The stories I've heard about..." instead of first-person experiences.`,
+          context: `Marshall's age: ${marshallAge} (born ${marshallBirthYear}). Year mentioned: ${year}. Marshall's age in that year: ${marshallAgeInYear}.`,
+        });
+      } else if (hasExperienceLanguage && marshallAgeInYear < 16) {
+        // Marshall was a teenager - less likely to be in bars/cafes alone
+        const surroundingText = extractSurroundingText(content, yearStr, 100);
+        
+        issues.push({
+          type: 'factual_error',
+          severity: 'medium',
+          originalText: surroundingText,
+          issue: `Marshall is 33 years old (born 1993). In ${year}, he would have been ${marshallAgeInYear} years old. The content suggests adult experiences (bars, cafes, travel) that may not be appropriate for a ${marshallAgeInYear}-year-old.`,
+          suggestion: `Consider Marshall's age in ${year} (${marshallAgeInYear} years old). Adjust the language to reflect a teenager's perspective or use second-hand accounts.`,
+          context: `Marshall's age: ${marshallAge} (born ${marshallBirthYear}). Year mentioned: ${year}. Marshall's age in that year: ${marshallAgeInYear}.`,
+        });
+      }
+    }
+  }
+  
+  // Check for vague time references that might be problematic
+  const vagueTimePatterns = [
+    /(?:late|early|mid)\s+(?:90s|nineties|80s|eighties|70s|seventies)/i,
+  ];
+  
+  for (const pattern of vagueTimePatterns) {
+    const matches = content.match(pattern);
+    if (matches) {
+      const hasExperienceLanguage = experiencePatterns.some(p => p.test(content));
+      if (hasExperienceLanguage) {
+        const match = matches[0];
+        const decadeMatch = match.match(/(\d+)s|(nineties|eighties|seventies)/i);
+        
+        if (decadeMatch) {
+          let decade: number;
+          if (decadeMatch[1]) {
+            decade = parseInt(decadeMatch[1]);
+          } else {
+            const decadeMap: Record<string, number> = {
+              'nineties': 90,
+              'eighties': 80,
+              'seventies': 70,
+            };
+            decade = decadeMap[decadeMatch[2].toLowerCase()] || 90;
+          }
+          
+          const year = 1900 + decade;
+          const marshallAgeInYear = year - marshallBirthYear;
+          
+          if (marshallAgeInYear < 10) {
+            const surroundingText = extractSurroundingText(content, match, 100);
+            
+            issues.push({
+              type: 'factual_error',
+              severity: 'high',
+              originalText: surroundingText,
+              issue: `Marshall is 33 years old (born 1993). In the ${decade}s, he would have been ${marshallAgeInYear} years old or younger. The content suggests first-person experiences that don't align with his age.`,
+              suggestion: `Rewrite to reflect Marshall's actual age. For the ${decade}s, Marshall would have been a child. Use phrases like "I've studied the footage..." or "The stories from that era..." instead of first-person experiences.`,
+              context: `Marshall's age: ${marshallAge} (born ${marshallBirthYear}). Decade: ${decade}s. Marshall's approximate age: ${marshallAgeInYear} or younger.`,
+            });
+          }
+        }
+      }
+    }
+  }
+  
+  return issues;
+}
+
+/**
+ * Extract surrounding text around a match
+ */
+function extractSurroundingText(content: string, match: string, contextLength: number): string {
+  const index = content.toLowerCase().indexOf(match.toLowerCase());
+  if (index === -1) return match;
+  
+  const start = Math.max(0, index - contextLength);
+  const end = Math.min(content.length, index + match.length + contextLength);
+  return content.substring(start, end);
 }
 
 /**

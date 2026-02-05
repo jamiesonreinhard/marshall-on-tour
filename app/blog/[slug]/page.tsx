@@ -358,7 +358,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
         <header className="max-w-4xl mx-auto px-6 sm:px-8 pt-12 pb-8">
           <div className="space-y-4">
             <div className="flex items-center gap-3">
-              <span className="px-3 py-1 bg-zinc-100 text-zinc-900 rounded-full text-xs font-medium">
+              <span className="px-3 py-1 bg-zinc-100 text-zinc-900 rounded-full text-sm font-medium">
                 {post.category}
               </span>
               <ReadingTime minutes={post.readingTime} />
@@ -376,7 +376,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
                 </div>
                 <div>
                   <p className="text-sm font-medium text-zinc-900">{post.author.name}</p>
-                  <p className="text-xs text-zinc-500">
+                  <p className="text-sm text-zinc-500">
                     {new Date(post.date).toLocaleDateString('en-US', { 
                       month: 'long', 
                       day: 'numeric', 

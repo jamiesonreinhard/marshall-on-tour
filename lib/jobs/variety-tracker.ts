@@ -91,18 +91,38 @@ export async function getContentHistory(days: number = 7): Promise<ContentHistor
     
     // Check for tournament name patterns in title
     // Examples: "Open Occitanie Preview", "Montpellier Travel Guide", "ATP 250 Montpellier"
+    // IMPORTANT: Also match "ABN AMRO Open", "Rotterdam's ABN AMRO Open", etc.
     const tournamentPatterns = [
+      // Pattern 1: "Tournament Name Preview/Recap/Guide" (catches most cases)
       /(?:^|\s)([a-z]+(?:\s+[a-z]+)*)\s+(?:preview|recap|guide|travel|2026|day update)/i,
-      /(?:^|\s)(open\s+[a-z]+)/i,
+      // Pattern 2: "Open [Name]" (catches "Open Occitanie", "Open Sud de France", etc.)
+      /(?:^|\s)(open\s+[a-z]+(?:\s+[a-z]+)*)/i,
+      // Pattern 3: "ABN AMRO Open", "BNP Paribas Open", etc. (multi-word tournament names)
+      /(?:^|\s)([a-z]+\s+[a-z]+\s+open)/i,
+      // Pattern 4: "[City]'s [Tournament Name]" (catches "Rotterdam's ABN AMRO Open")
+      /([a-z]+)'s\s+([a-z]+\s+[a-z]+\s+open)/i,
+      // Pattern 5: "[Tournament Name] [City]" (catches "ABN AMRO Open Rotterdam")
+      /([a-z]+\s+[a-z]+\s+open)\s+([a-z]+)/i,
+      // Pattern 6: "ATP [Number] [City]" (catches "ATP 250 Montpellier")
       /(?:^|\s)(atp\s+\d+\s+[a-z]+)/i,
     ];
     
     tournamentPatterns.forEach(pattern => {
       const match = titleLower.match(pattern);
-      if (match && match[1]) {
-        const tournamentName = match[1].trim().toLowerCase();
-        if (tournamentName && !tournaments.includes(tournamentName)) {
-          tournaments.push(tournamentName);
+      if (match) {
+        // Extract tournament name from match (could be match[1] or match[2] depending on pattern)
+        let tournamentName = match[1] || match[2];
+        if (tournamentName) {
+          tournamentName = tournamentName.trim().toLowerCase();
+          // For patterns like "Rotterdam's ABN AMRO Open", we want "abn amro open", not "rotterdam"
+          if (tournamentName.includes("'s")) {
+            // Skip city names with apostrophes
+            tournamentName = match[2] || match[1];
+            if (tournamentName) tournamentName = tournamentName.trim().toLowerCase();
+          }
+          if (tournamentName && !tournaments.includes(tournamentName)) {
+            tournaments.push(tournamentName);
+          }
         }
       }
     });
@@ -116,7 +136,7 @@ export async function getContentHistory(days: number = 7): Promise<ContentHistor
     
     // Method 3: Extract city names that might be tournaments
     // If title contains city name + "travel guide" or "preview", it's likely a tournament post
-    const cityTournamentPattern = /(?:guide to|preview|travel guide|at)\s+([a-z]+(?:\s+[a-z]+)*)/i;
+    const cityTournamentPattern = /(?:guide to|preview|travel guide|at|insider's guide to)\s+([a-z]+(?:\s+[a-z]+)*)/i;
     const cityMatch = titleLower.match(cityTournamentPattern);
     if (cityMatch && cityMatch[1]) {
       const cityName = cityMatch[1].trim().toLowerCase();
@@ -125,6 +145,18 @@ export async function getContentHistory(days: number = 7): Promise<ContentHistor
         if (!tournaments.includes(cityName)) {
           tournaments.push(cityName);
         }
+      }
+    }
+    
+    // Method 4: Direct tournament name matching (for titles that contain full tournament names)
+    // Check if title contains known tournament name patterns
+    // Examples: "ABN AMRO Open", "Open Occitanie", "BNP Paribas Open"
+    const directTournamentPattern = /(?:^|'s\s+|:\s+)([a-z]+\s+[a-z]+\s+open|[a-z]+\s+open\s+[a-z]+)/i;
+    const directMatch = titleLower.match(directTournamentPattern);
+    if (directMatch && directMatch[1]) {
+      const directTournamentName = directMatch[1].trim().toLowerCase();
+      if (directTournamentName && !tournaments.includes(directTournamentName)) {
+        tournaments.push(directTournamentName);
       }
     }
   });
@@ -186,7 +218,37 @@ export async function hasPostedAboutTournament(
 ): Promise<boolean> {
   const history = await getContentHistory(days);
   const tournamentLower = tournamentName.toLowerCase();
-  return history.tournaments.some(t => t.includes(tournamentLower));
+  
+  // Check if tournament name appears in any extracted tournament names
+  const foundInTournaments = history.tournaments.some(t => 
+    t.includes(tournamentLower) || tournamentLower.includes(t)
+  );
+  
+  if (foundInTournaments) {
+    return true;
+  }
+  
+  // Also check if tournament name appears in post titles directly
+  // This catches cases where extraction failed but the name is in the title
+  const supabase = createAdminSupabase();
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - days);
+  
+  const { data: posts } = await supabase
+    .from('posts')
+    .select('title')
+    .or(`published_at.gte.${cutoffDate.toISOString()},and(published_at.is.null,created_at.gte.${cutoffDate.toISOString()})`);
+  
+  if (posts) {
+    const titleMatch = posts.some(post => 
+      post.title.toLowerCase().includes(tournamentLower)
+    );
+    if (titleMatch) {
+      return true;
+    }
+  }
+  
+  return false;
 }
 
 /**

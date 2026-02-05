@@ -1,7 +1,6 @@
 'use client';
 
 import { useState } from 'react';
-import { AdminHeader } from '@/app/admin/components/AdminHeader';
 
 export default function TestImageGenerationPage() {
   const [scene, setScene] = useState('Marshall sitting with a charcuterie board, in the grass on a towel in front of the Eiffel Tower');
@@ -72,9 +71,8 @@ export default function TestImageGenerationPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <AdminHeader />
-      <div className="max-w-6xl mx-auto px-4 py-8">
+    <div>
+      <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold mb-2">Test Image Generation</h1>
         <p className="text-gray-600 mb-6">
           Test LoRA/Fal.ai image generation with custom scenes

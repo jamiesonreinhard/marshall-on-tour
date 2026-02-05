@@ -8,6 +8,7 @@
 import { getImageStrategy, ImageStrategy } from './image-strategy';
 import { getStockImageForPost } from './stock-images';
 import { getImageProvider, ImageProviderInterface, ReplicateProvider, ImagenProvider, FalProvider } from './image-providers';
+import { uploadImageToStorage, ensureBucketExists } from '@/lib/storage/upload-image';
 
 const BASE_IDENTITY_IMAGE = '/assets/base_identity.png';
 const MARSHALL_FACE_REFERENCE = process.env.MARSHALL_FACE_REFERENCE_URL || BASE_IDENTITY_IMAGE;
@@ -316,29 +317,82 @@ function selectImageProvider(
 }
 
 /**
- * Save generated image to public directory
+ * Save generated image to Supabase Storage
  */
 async function saveImage(imageUrl: string, context: ImageGenerationContext): Promise<string> {
   try {
-    // Handle base64 data URLs (from Imagen)
+    // Ensure bucket exists
+    await ensureBucketExists('marshall-assets');
+    
+    let imageBuffer: Buffer;
+    let contentType = 'image/png';
+    
+    // Handle base64 data URLs (from Imagen/Gemini)
     if (imageUrl.startsWith('data:image/')) {
-      // For now, return the data URL directly
-      // In production, you'd want to decode and upload to storage
-      console.log('[Image Save] Received base64 data URL from provider');
+      console.log('[Image Save] Processing base64 data URL from provider');
+      const [header, base64Data] = imageUrl.split(',');
+      const mimeMatch = header.match(/data:image\/([^;]+)/);
+      if (mimeMatch) {
+        contentType = `image/${mimeMatch[1]}`;
+      }
+      imageBuffer = Buffer.from(base64Data, 'base64');
+    } else {
+      // Handle regular URLs (from Replicate, Fal.ai, etc.)
+      console.log('[Image Save] Downloading image from:', imageUrl);
+      const response = await fetch(imageUrl);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.status}`);
+      }
+      
+      // Determine content type from response or URL
+      const contentTypeHeader = response.headers.get('content-type');
+      if (contentTypeHeader && contentTypeHeader.startsWith('image/')) {
+        contentType = contentTypeHeader;
+      } else if (imageUrl.includes('.jpg') || imageUrl.includes('.jpeg')) {
+        contentType = 'image/jpeg';
+      } else if (imageUrl.includes('.webp')) {
+        contentType = 'image/webp';
+      }
+      
+      const arrayBuffer = await response.arrayBuffer();
+      imageBuffer = Buffer.from(arrayBuffer);
+    }
+    
+    // Generate unique filename
+    const timestamp = Date.now();
+    const postType = context.postType || 'lifestyle';
+    const sanitizedTopic = (context.topic || 'image')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .substring(0, 50);
+    const extension = contentType.includes('jpeg') ? 'jpg' : 
+                     contentType.includes('webp') ? 'webp' : 'png';
+    const filename = `generated-images/${postType}/${sanitizedTopic}-${timestamp}.${extension}`;
+    
+    console.log('[Image Save] Uploading to Supabase Storage:', filename);
+    
+    // Upload to Supabase Storage
+    const uploadResult = await uploadImageToStorage(
+      imageBuffer,
+      filename,
+      'marshall-assets'
+    );
+    
+    if (uploadResult.success && uploadResult.url) {
+      console.log('[Image Save] ✅ Image saved to:', uploadResult.url);
+      return uploadResult.url;
+    } else {
+      console.warn('[Image Save] Upload failed, falling back to original URL:', uploadResult.error);
+      // Fallback to original URL if upload fails
       return imageUrl;
     }
-    
-    // Handle regular URLs (from Replicate)
-    const response = await fetch(imageUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch image: ${response.status}`);
-    }
-    
-    // For MVP, return the URL directly (temporary URLs work for testing)
-    // In production, you'd save to filesystem or Supabase Storage
-    return imageUrl;
   } catch (error) {
-    console.error('Error saving image:', error);
+    console.error('[Image Save] Error saving image:', error);
+    // Fallback to original URL or fallback image
+    if (imageUrl && !imageUrl.startsWith('data:')) {
+      console.warn('[Image Save] Returning original URL as fallback');
+      return imageUrl;
+    }
     return getFallbackImage(context.postType);
   }
 }
