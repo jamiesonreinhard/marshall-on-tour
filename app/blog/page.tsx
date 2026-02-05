@@ -2,11 +2,11 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import type { BlogPost } from "@/lib/posts";
 
-export default function BlogPage() {
+function BlogContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [posts, setPosts] = useState<BlogPost[]>([]);
@@ -247,5 +247,38 @@ export default function BlogPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function BlogPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-white">
+        <nav className="border-b border-zinc-200 bg-white/80 backdrop-blur-sm sticky top-0 z-50">
+          <div className="max-w-[1600px] mx-auto px-6 sm:px-8">
+            <div className="flex items-center justify-between h-16">
+              <Link href="/" className="text-xl font-semibold text-zinc-900 tracking-tight">
+                Marshall
+              </Link>
+            </div>
+          </div>
+        </nav>
+        <header className="border-b border-zinc-200 bg-zinc-50">
+          <div className="max-w-[1600px] mx-auto px-6 sm:px-8 py-12">
+            <h1 className="text-4xl font-bold text-zinc-900 mb-4">Blog</h1>
+            <p className="text-lg text-zinc-600">
+              Insights, gear reviews, travel guides, and match analysis from the tour
+            </p>
+          </div>
+        </header>
+        <main className="max-w-[1600px] mx-auto px-6 sm:px-8 py-12">
+          <div className="text-center py-12">
+            <p className="text-zinc-500">Loading posts...</p>
+          </div>
+        </main>
+      </div>
+    }>
+      <BlogContent />
+    </Suspense>
   );
 }
