@@ -8,8 +8,15 @@
 import { createAdminSupabase } from '@/lib/supabase/server';
 import { getPostingStatus } from './posting-rules';
 import { rankOpportunities, scoreTimeliness, scoreAffiliatePotential, scoreSEOValue, scoreSocialEngagement, ContentOpportunity } from './scoring';
-import { getMarshallState, updateLocationForTournament, updateNextLocation } from '@/lib/marshall/state';
+import { getMarshallState, updateLocationForTournament, updateNextLocation, selectTournamentByRegionPreference } from '@/lib/marshall/state';
 import { hasPostedAboutTournament, hasPostedAboutTopic, hasPostedInCategory } from './variety-tracker';
+import {
+  getRisingPlayers,
+  getEventSchedules,
+  getCalendarCategories,
+  getLiveEvents,
+} from '@/lib/data/integrations/freewebapi';
+import { getRecentNews } from '@/lib/data/integrations/rss';
 
 export interface ContentOpportunityInput {
   type: ContentOpportunity['type'];
@@ -28,12 +35,34 @@ export interface ContentOpportunityInput {
 /**
  * Find content opportunities from various sources
  */
+const TENNIS_API_CONFIG = { enabled: true, fallbackToMock: false };
+
 export async function findContentOpportunities(): Promise<ContentOpportunityInput[]> {
   const opportunities: ContentOpportunityInput[] = [];
   const supabase = createAdminSupabase();
   const now = new Date();
   const today = now.toISOString().split('T')[0];
-  
+  const [day, month, year] = today.split('-').map(Number).reverse(); // DD, MM, YYYY for API
+  const marshallState = await getMarshallState();
+
+  // 0. Fetch real data once (calendar, live events, today's matches) for timely, data-driven posts
+  const [calendarRes, liveRes, schedulesRes] = await Promise.all([
+    getCalendarCategories(day, month, year, TENNIS_API_CONFIG),
+    getLiveEvents(TENNIS_API_CONFIG),
+    getEventSchedules(today, TENNIS_API_CONFIG),
+  ]);
+  const calendarCategoriesToday = calendarRes.success ? (calendarRes.data?.categories ?? []) : [];
+  const liveEvents = liveRes.success && Array.isArray(liveRes.data) ? liveRes.data : [];
+  const todayMatches = schedulesRes.success && Array.isArray(schedulesRes.data) ? schedulesRes.data : [];
+  const realData = {
+    calendarCategoriesToday,
+    liveEventsCount: liveEvents.length,
+    todayMatches,
+  };
+  if (realData.liveEventsCount > 0 || todayMatches.length > 0) {
+    console.log(`[Content Intelligence] Real data: ${realData.liveEventsCount} live events, ${todayMatches.length} matches today, ${calendarCategoriesToday.length} calendar categories`);
+  }
+
   // 1. Check active tournaments (currently happening)
   // CRITICAL: A tournament is "active" only if end_date is AFTER today
   // If end_date = today, it's ended (not active) - should go to recap logic
@@ -48,54 +77,82 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
     activeTournaments.forEach(t => {
       console.log(`  - ${t.name}: start=${t.start_date}, end=${t.end_date}`);
     });
-    // Auto-update Marshall's location for active tournaments
-    for (const tournament of activeTournaments) {
-      // Check if we need to update location (tournament just started today)
-      if (tournament.start_date === today) {
+
+    // Location update: only when he "arrives" — tournament started today AND (it's his next_tournament_id OR we're initializing)
+    const startedToday = activeTournaments.filter((t) => t.start_date === today);
+    for (const tournament of startedToday) {
+      const isNext = marshallState?.next_tournament_id === tournament.id;
+      const isInitializing = !marshallState?.current_tournament_id;
+      if (isNext || isInitializing) {
         try {
-          await updateLocationForTournament(tournament.id, tournament.name);
-          console.log(`[Content Intelligence] Updated Marshall's location to ${tournament.location}`);
+          const updated = await updateLocationForTournament(tournament.id, tournament.name);
+          if (updated) {
+            console.log(`[Content Intelligence] Updated Marshall's location to ${(tournament.location as { city?: string })?.city} (${tournament.name})`);
+            break; // Only one arrival per run
+          }
         } catch (error) {
           console.error(`[Content Intelligence] Failed to update location for ${tournament.name}:`, error);
         }
       }
     }
-    
-    // Track which tournaments we've already created opportunities for in THIS run
-    // This prevents creating multiple opportunities for the same tournament in one run
+    // If initializing and we didn't update (e.g. no "started today"), assign current with European preference
+    if (!marshallState?.current_tournament_id && startedToday.length === 0 && activeTournaments.length > 0) {
+      const pick = selectTournamentByRegionPreference(activeTournaments);
+      if (pick) {
+        try {
+          const updated = await updateLocationForTournament(pick.id, pick.name);
+          if (updated) {
+            console.log(`[Content Intelligence] Initialized Marshall's location to ${(pick.location as { city?: string })?.city} (${pick.name}) [region preference applied]`);
+          }
+        } catch (error) {
+          console.error(`[Content Intelligence] Failed to initialize location for ${pick.name}:`, error);
+        }
+      }
+    }
+
+    // Create lifestyle/day-update opportunities for all active tournaments; preference for Marshall's current location is applied in scoring
+    const currentTournamentId = marshallState?.current_tournament_id;
+    const currentCity = marshallState?.current_city;
+
     const tournamentsProcessed = new Set<string>();
-    
-    // Use for...of loop to handle async operations properly
+
     for (const tournament of activeTournaments) {
       const location = tournament.location as { city?: string; country?: string };
-      
-      // CRITICAL: Check if we've already posted about this tournament recently
-      // Check both tournament name AND city name (catches posts that mention city but not full tournament name)
+      const isMarshallHere = currentTournamentId === tournament.id || (currentCity && location.city?.toLowerCase() === currentCity.toLowerCase());
+      if (isMarshallHere) {
+        console.log(`[Content Intelligence] ${tournament.name}: Marshall is on-site (preference will be applied in scoring)`);
+      } else {
+        console.log(`[Content Intelligence] ${tournament.name}: creating opportunity (Marshall not on-site; lower preference in scoring)`);
+      }
+
       const alreadyPostedAboutTournament = await hasPostedAboutTournament(tournament.name, 7);
       const alreadyPostedAboutCity = location.city ? await hasPostedAboutTopic(location.city, 7) : false;
-      
+
       if (alreadyPostedAboutTournament || alreadyPostedAboutCity) {
-        console.log(`[Content Intelligence] ⚠️ Skipping ${tournament.name} opportunities - already posted about this tournament (${alreadyPostedAboutTournament ? 'tournament name' : ''} ${alreadyPostedAboutCity ? 'city name' : ''}) in last 7 days`);
-        continue; // Skip this tournament entirely
-      }
-      
-      // CRITICAL: Check if we've already created an opportunity for this tournament in THIS run
-      // This prevents creating both tournament update AND lifestyle guide in the same run
-      if (tournamentsProcessed.has(tournament.id)) {
-        console.log(`[Content Intelligence] ⚠️ Skipping ${tournament.name} - already created opportunity for this tournament in this run`);
+        console.log(`[Content Intelligence] ⚠️ Skipping ${tournament.name} opportunities - already posted about this tournament in last 7 days`);
         continue;
       }
-      
-      // Mark this tournament as processed
+
+      if (tournamentsProcessed.has(tournament.id)) continue;
       tournamentsProcessed.add(tournament.id);
-      
-      // Only create ONE opportunity per tournament per run
-      // Prefer lifestyle guide (better affiliate potential) over tournament update
-      // But check if we've posted travel content recently
+
       const recentTravelPosts = await hasPostedInCategory('travel', 4);
-      
+      const tournamentNameLower = tournament.name.toLowerCase();
+      const matchesForTournament = realData.todayMatches.filter(
+        (m: { tournament_name?: string }) => (m.tournament_name ?? '').toLowerCase().includes(tournamentNameLower) || tournamentNameLower.includes((m.tournament_name ?? '').toLowerCase())
+      );
+      const hasLiveNow = realData.liveEventsCount > 0;
+      const metadataWithReal = {
+        tournament_id: tournament.id,
+        tournament_name: tournament.name,
+        location,
+        isMarshallHere,
+        todayMatchesCount: matchesForTournament.length,
+        todayMatches: matchesForTournament.slice(0, 20),
+        liveEventsCount: hasLiveNow ? realData.liveEventsCount : undefined,
+      };
+
       if (!recentTravelPosts) {
-        // Create lifestyle guide (better for affiliate revenue)
         opportunities.push({
           type: 'lifestyle',
           topic: `Marshall's Guide to ${location.city}`,
@@ -103,22 +160,71 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
           eventDate: new Date(tournament.start_date),
           hasAffiliateLinks: true,
           searchVolume: 'medium',
-          metadata: { tournament_id: tournament.id, tournament_name: tournament.name, location },
+          metadata: metadataWithReal,
         });
         console.log(`[Content Intelligence] ✓ Created lifestyle guide opportunity for ${tournament.name} (${location.city})`);
       } else {
-        // If we've posted travel recently, create tournament update instead
         opportunities.push({
           type: 'tournament',
           topic: `${tournament.name} Day Update`,
           description: `Daily update from ${tournament.name}`,
           eventDate: new Date(tournament.start_date),
-          isLive: true,
+          isLive: hasLiveNow,
           searchVolume: tournament.category === 'Grand Slam' ? 'high' : 'medium',
           hasViralPotential: tournament.category === 'Grand Slam',
-          metadata: { tournament_id: tournament.id, tournament_name: tournament.name },
+          metadata: metadataWithReal,
         });
-        console.log(`[Content Intelligence] ✓ Created tournament update opportunity for ${tournament.name} (travel content posted recently, using update instead)`);
+        console.log(`[Content Intelligence] ✓ Created tournament update opportunity for ${tournament.name}${hasLiveNow ? ' (live matches now)' : ''}`);
+      }
+    }
+
+    // Live-now opportunity: when there are live events, add a match/live post (even if Marshall isn't on-site; preference for his tournament in scoring)
+    if (realData.liveEventsCount > 0) {
+      const currentTournament = marshallState?.current_tournament_id
+        ? activeTournaments.find((t) => t.id === marshallState.current_tournament_id)
+        : null;
+      const alreadyPostedLive = currentTournament ? await hasPostedAboutTournament(currentTournament.name, 1) : false;
+      if (!alreadyPostedLive) {
+        if (currentTournament) {
+          opportunities.push({
+            type: 'match',
+            topic: `Live at ${currentTournament.name}: What's Happening Now`,
+            description: `Real-time update from ${currentTournament.name} with live matches`,
+            eventDate: now,
+            isLive: true,
+            searchVolume: 'medium',
+            hasViralPotential: currentTournament.category === 'Grand Slam',
+            metadata: {
+              tournament_id: currentTournament.id,
+              tournament_name: currentTournament.name,
+              location: currentTournament.location as { city?: string; country?: string },
+              isMarshallHere: true,
+              liveEventsCount: realData.liveEventsCount,
+              todayMatches: realData.todayMatches.slice(0, 15),
+            },
+          });
+          console.log(`[Content Intelligence] ✓ Created live-now opportunity at ${currentTournament.name} (${realData.liveEventsCount} live events)`);
+        } else {
+          // Marshall not at a current tournament; still create a generic live-now opportunity
+          const fallbackTournament = activeTournaments[0];
+          opportunities.push({
+            type: 'match',
+            topic: `Live Tennis Now: ${realData.liveEventsCount} matches in progress`,
+            description: `What's happening in tennis right now – ${realData.liveEventsCount} live matches`,
+            eventDate: now,
+            isLive: true,
+            searchVolume: 'medium',
+            metadata: {
+              tournament_id: fallbackTournament?.id,
+              tournament_name: fallbackTournament?.name,
+              location: fallbackTournament?.location as { city?: string; country?: string } | undefined,
+              isMarshallHere: false,
+              liveEventsCount: realData.liveEventsCount,
+              todayMatches: realData.todayMatches.slice(0, 15),
+            },
+          });
+          console.log(`[Content Intelligence] ✓ Created live-now opportunity (${realData.liveEventsCount} live events, Marshall not on-site)`);
+        }
       }
     }
   }
@@ -183,25 +289,27 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
       
       console.log(`[Content Intelligence] ✓ ${tournament.name} is upcoming (starts ${startDateOnly}, ${Math.round(hoursUntil)} hours away)`);
       
-      // Create preview opportunity if tournament is between 24 hours and 5 days away
-      // Don't create previews more than 5 days before (too early) or less than 24 hours before (too late)
+      // Create preview opportunity from now up until day of tournament start (inclusive)
+      // Allow "tomorrow" and day-of previews; cap at 5 days out so we don't preview too early
       const hoursIn5Days = 5 * 24; // 120 hours
       
-      // Final validation: Only create preview if hoursUntil is positive and within range
-      if (hoursUntil > 0 && hoursUntil > 24 && hoursUntil <= hoursIn5Days) {
+      if (hoursUntil > 0 && hoursUntil <= hoursIn5Days) {
+        const location = tournament.location as { city?: string; country?: string } | undefined;
         opportunities.push({
           type: 'tournament',
           topic: `${tournament.name} Preview`,
           description: `Preview of upcoming ${tournament.name}`,
           hoursUntilEvent: hoursUntil,
           searchVolume: tournament.category === 'Grand Slam' ? 'high' : 'medium',
-          metadata: { tournament_id: tournament.id },
+          metadata: {
+            tournament_id: tournament.id,
+            tournament_name: tournament.name,
+            location: location ?? undefined,
+          },
         });
         console.log(`[Content Intelligence] ✓ Created preview opportunity for ${tournament.name} (starts ${startDateOnly}, ${Math.round(hoursUntil)} hours until start)`);
       } else if (hoursUntil <= 0) {
         console.log(`[Content Intelligence] 🚫 BLOCKED: Skipping ${tournament.name} preview - tournament has already started (hoursUntil: ${Math.round(hoursUntil)})`);
-      } else if (hoursUntil <= 24) {
-        console.log(`[Content Intelligence] Skipping ${tournament.name} preview - too close to start (${Math.round(hoursUntil)} hours, need at least 24 hours)`);
       } else {
         console.log(`[Content Intelligence] Skipping ${tournament.name} preview - too far in advance (${Math.round(hoursUntil)} hours, max is ${hoursIn5Days} hours / 5 days)`);
       }
@@ -211,19 +319,18 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
   }
   
   // 2b. Check recently ended tournaments (for recap posts)
-  // CRITICAL: Include tournaments that ended TODAY (end_date = today) or within last 48 hours
-  // This catches tournaments that just ended and should get recap posts, not previews
+  // CRITICAL: Only create recaps when end_date is BEFORE today. If end_date = today, the final may not have been played yet.
   const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString().split('T')[0];
   const { data: recentTournaments } = await supabase
     .from('atp_calendar')
     .select('*')
-    .lte('end_date', today) // Tournament has ended (end_date is today or before)
-    .gte('end_date', twoDaysAgo) // Ended today or within last 48 hours
+    .lt('end_date', today) // Tournament ended before today (final day has passed)
+    .gte('end_date', twoDaysAgo) // Ended yesterday or the day before
     .order('end_date', { ascending: false })
     .limit(2);
   
   if (recentTournaments && recentTournaments.length > 0) {
-    console.log(`[Content Intelligence] Found ${recentTournaments.length} recently ended tournaments for recaps (today: ${today})`);
+    console.log(`[Content Intelligence] Found ${recentTournaments.length} recently ended tournaments for recaps (end_date < today: ${today})`);
     
     // Auto-update Marshall's next location when tournaments end
     for (const tournament of recentTournaments) {
@@ -240,24 +347,27 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
       
       console.log(`[Content Intelligence] ${tournament.name} ended (end_date: ${endDateStr}, today: ${today}, hoursSinceEnd: ${Math.round(hoursSinceEnd)}, effective: ${Math.round(effectiveHoursSinceEnd)})`);
       
-      // Update next location if tournament ended today or yesterday
-      if (endDateStr === today || (hoursSinceEnd >= 0 && hoursSinceEnd <= 24)) {
+      // Update next location only when this tournament is Marshall's current (he was here)
+      const isMarshallCurrentTournament = marshallState?.current_tournament_id === tournament.id;
+      if (isMarshallCurrentTournament && (endDateStr === today || (hoursSinceEnd >= 0 && hoursSinceEnd <= 24))) {
         try {
-          await updateNextLocation(tournament.id);
-          console.log(`[Content Intelligence] Updated Marshall's next location after ${tournament.name} ended`);
+          const updated = await updateNextLocation(tournament.id);
+          if (updated) {
+            console.log(`[Content Intelligence] Updated Marshall's next location after ${tournament.name} ended`);
+          }
         } catch (error) {
           console.error(`[Content Intelligence] Failed to update next location after ${tournament.name}:`, error);
         }
       }
       
-      // Create recap if tournament ended today OR within last 48 hours
-      // BUT: Check if we've already posted about this tournament recently
-      const alreadyPostedRecap = await hasPostedAboutTournament(tournament.name, 3); // Check last 3 days
+      // Create recap only when tournament ended at least yesterday (we already filtered end_date < today)
+      // Check if we've already posted about this tournament recently
+      const alreadyPostedRecap = await hasPostedAboutTournament(tournament.name, 3);
       const alreadyPostedTopic = await hasPostedAboutTopic(tournament.name, 3);
       
       if (alreadyPostedRecap || alreadyPostedTopic) {
         console.log(`[Content Intelligence] ⚠️ Skipping ${tournament.name} recap - already posted about this tournament recently`);
-      } else if (endDateStr === today || (effectiveHoursSinceEnd >= 0 && effectiveHoursSinceEnd <= 48)) {
+      } else if (effectiveHoursSinceEnd >= 0 && effectiveHoursSinceEnd <= 48) {
         // Create a recap topic - but note we don't have match data
         // The post generator will add a warning to Gemini to NOT make up results
         opportunities.push({
@@ -267,10 +377,12 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
           eventDate: endDate,
           searchVolume: tournament.category === 'Grand Slam' ? 'high' : 'medium',
           hasViralPotential: tournament.category === 'Grand Slam',
-          metadata: { 
-            tournament_id: tournament.id, 
+          metadata: {
+            tournament_id: tournament.id,
+            tournament_name: tournament.name,
+            tournament_end_date: tournament.end_date,
             isRecap: true,
-            hasMatchData: false, // Flag that we don't have match data
+            hasMatchData: false,
           },
         });
         console.log(`[Content Intelligence] ✓ Created recap opportunity for ${tournament.name} (ended ${endDateStr === today ? 'today' : Math.round(effectiveHoursSinceEnd) + ' hours ago'}) - NOTE: No match data available, will generate generic recap`);
@@ -282,18 +394,39 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
     console.log(`[Content Intelligence] No recently ended tournaments found for recaps (today: ${today}, twoDaysAgo: ${twoDaysAgo})`);
   }
   
-  // 3. Check content calendar (planned content takes priority)
+  // 3. Content calendar: today + next 1–2 days (prioritized so calendar-driven posts are chosen when they exist)
+  const nextTwoDays: string[] = [today];
+  for (let d = 1; d <= 2; d++) {
+    const d2 = new Date(now);
+    d2.setDate(d2.getDate() + d);
+    nextTwoDays.push(d2.toISOString().split('T')[0]);
+  }
   const { data: calendarEntries } = await supabase
     .from('content_calendar')
     .select('*, atp_calendar(*)')
-    .eq('scheduled_date', today)
+    .in('scheduled_date', nextTwoDays)
     .eq('status', 'approved')
-    .is('generated_post_id', null);
+    .is('generated_post_id', null)
+    .order('scheduled_date', { ascending: true });
   
   if (calendarEntries && calendarEntries.length > 0) {
-    calendarEntries.forEach(entry => {
+    console.log(`[Content Intelligence] Found ${calendarEntries.length} approved calendar entries (${nextTwoDays.join(', ')})`);
+    for (const entry of calendarEntries) {
+      const briefLower = (entry.content_brief || '').toLowerCase();
+      const isRecapStyle = /\b(recap|wrap\s*up|wrap-up|final\s*takeaways|concluded|in the books)\b/.test(briefLower);
+      if (isRecapStyle && entry.atp_tournament_id) {
+        const { data: calTournament } = await supabase
+          .from('atp_calendar')
+          .select('end_date')
+          .eq('id', entry.atp_tournament_id)
+          .single();
+        if (calTournament && calTournament.end_date && calTournament.end_date >= today) {
+          console.log(`[Content Intelligence] Skipping calendar recap "${entry.content_brief?.slice(0, 40)}..." - tournament end_date ${calTournament.end_date} is not yet in the past (today: ${today})`);
+          continue;
+        }
+      }
       opportunities.push({
-        type: entry.category?.toLowerCase() as ContentOpportunity['type'] || 'tournament',
+        type: (entry.category?.toLowerCase() as ContentOpportunity['type']) || 'tournament',
         topic: entry.content_brief,
         description: entry.content_brief,
         eventDate: new Date(entry.scheduled_date),
@@ -302,15 +435,17 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
         metadata: {
           calendar_entry_id: entry.id,
           tournament_id: entry.atp_tournament_id,
+          from_calendar: true,
+          scheduled_date: entry.scheduled_date,
+          isRecap: isRecapStyle,
         },
       });
-    });
+    }
   }
   
   // 4. Check Marshall's state for gear/lifestyle opportunities
   // NOTE: Marshall's state is optional - if not set, these opportunities won't be created
   // State can be managed manually via admin page or auto-updated when tournaments start/end
-  const marshallState = await getMarshallState();
   if (marshallState) {
     // Gear opportunity: INFREQUENT comparison guides, not single product reviews
     // Check if we've posted ANY gear content recently (45 days = very infrequent)
@@ -402,36 +537,82 @@ export async function findContentOpportunities(): Promise<ContentOpportunityInpu
     console.log(`[Content Intelligence] ✓ Created blast-from-past opportunity (infrequent - last one was 14+ days ago)`);
   }
   
-  // 5b. General player profiles (top players) - if we haven't posted player content recently
+  // 5b. Player profiles - if we haven't posted player content recently
   const recentPlayerPosts = await hasPostedInCategory('analysis', 7); // Player posts map to analysis
   if (!recentPlayerPosts) {
-    // Create player profile opportunity (not just up-and-coming)
-    const topPlayers = ['Carlos Alcaraz', 'Jannik Sinner', 'Novak Djokovic', 'Daniil Medvedev'];
-    const randomPlayer = topPlayers[Math.floor(Math.random() * topPlayers.length)];
-    
-    // Check if we've posted about this specific player recently
-    const hasPostedAboutPlayer = await hasPostedAboutTopic(randomPlayer.toLowerCase(), 14);
-    if (!hasPostedAboutPlayer) {
+    let playerName: string | null = null;
+    let rankingStats: { previousRanking?: number; points?: number; bestRanking?: number } | undefined;
+    const marshallStateForPlayer = await getMarshallState();
+    if (marshallStateForPlayer?.up_and_coming_player_watching) {
+      playerName = marshallStateForPlayer.up_and_coming_player_watching;
+    }
+    if (!playerName) {
+      const risingResult = await getRisingPlayers(8);
+      if (risingResult.success && risingResult.data?.length) {
+        const notPostedAbout: typeof risingResult.data = [];
+        for (const p of risingResult.data) {
+          if (!(await hasPostedAboutTopic(p.name.toLowerCase(), 14))) notPostedAbout.push(p);
+        }
+        if (notPostedAbout.length > 0) {
+          const pick = notPostedAbout[Math.floor(Math.random() * notPostedAbout.length)];
+          playerName = pick.name;
+          rankingStats = { previousRanking: pick.previousRanking, points: pick.points, bestRanking: pick.bestRanking };
+          console.log(`[Content Intelligence] ✓ Picked rising player from API: ${playerName} (rank ${pick.rank}, previous ${pick.previousRanking ?? '?'})`);
+        }
+      }
+    }
+    if (!playerName) {
+      const topPlayers = ['Carlos Alcaraz', 'Jannik Sinner', 'Novak Djokovic', 'Daniil Medvedev'];
+      const candidate = topPlayers.find((p) => !hasPostedAboutTopic(p.toLowerCase(), 14));
+      if (candidate) playerName = candidate;
+    }
+    if (playerName && !(await hasPostedAboutTopic(playerName.toLowerCase(), 14))) {
       opportunities.push({
         type: 'player',
-        topic: `Rising Star: ${randomPlayer}`,
-        description: `Deep dive on ${randomPlayer} - their game, recent form, and what makes them special`,
+        topic: `Rising Star: ${playerName}`,
+        description: `Deep dive on ${playerName} - their game, recent form, and what makes them special`,
         searchVolume: 'medium',
         hasViralPotential: true,
-        metadata: { player_name: randomPlayer },
+        metadata: { player_name: playerName, ...rankingStats },
       });
-      console.log(`[Content Intelligence] ✓ Created player profile opportunity for ${randomPlayer}`);
+      console.log(`[Content Intelligence] ✓ Created player profile opportunity for ${playerName}`);
     }
   }
   
-  // 5c. News opportunities (from RSS feeds) - if we have news data
-  // TODO: Implement when RSS feed is working properly
-  
-  // TODO: Add more opportunity sources:
-  // - Match results (when we have match data)
-  // - Weather-based travel tips
-  // - Gear opportunities (already handled via Marshall's state)
-  
+  // 5c. News opportunities (from RSS feeds)
+  const newsResult = await getRecentNews(24);
+  if (newsResult.success && newsResult.data && newsResult.data.length > 0) {
+    const topPlayerKeywords = ['alcaraz', 'sinner', 'djokovic', 'nadal', 'federer', 'medvedev', 'zverev', 'rune', 'shelton', 'fritz', 'australian open', 'wimbledon', 'roland garros', 'us open', 'atp', 'grand slam'];
+    const relevantNews = newsResult.data.filter((item) => {
+      const combined = (item.title + ' ' + (item.description || '')).toLowerCase();
+      return topPlayerKeywords.some((k) => combined.includes(k));
+    });
+    let added = 0;
+    for (const item of relevantNews.slice(0, 8)) {
+      if (added >= 3) break;
+      const topicSlug = item.title.slice(0, 60).toLowerCase().replace(/\s+/g, ' ');
+      if (await hasPostedAboutTopic(topicSlug, 5)) continue;
+      opportunities.push({
+        type: 'news',
+        topic: `Marshall's take: ${item.title}`,
+        description: item.description || item.title,
+        eventDate: new Date(item.published_at),
+        hasViralPotential: true,
+        searchVolume: 'medium',
+        metadata: {
+          newsItem: {
+            title: item.title,
+            description: item.description || '',
+            source: item.source,
+            url: item.url,
+          },
+        },
+      });
+      added++;
+      console.log(`[Content Intelligence] ✓ Created news opportunity: ${item.title.slice(0, 50)}...`);
+    }
+  }
+
   return opportunities;
 }
 

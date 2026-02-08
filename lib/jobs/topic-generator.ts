@@ -9,7 +9,7 @@
  */
 
 import { createAdminSupabase } from '@/lib/supabase/server';
-import { getCurrentTournaments, getUpcomingTournaments } from '@/lib/data/sportradar';
+import { getCurrentTournamentsFromDB, getUpcomingTournamentsFromDB } from '@/lib/data/tournaments-from-db';
 import { getRecentNews } from '@/lib/data/integrations/rss';
 import { getPlayerRankings } from '@/lib/data/integrations/player-data';
 import { hasPostedAboutTopic, hasPostedAboutTournament } from './variety-tracker';
@@ -68,8 +68,8 @@ export async function generateTopic(options: TopicGenerationOptions): Promise<st
  */
 async function generateAnalysisTopic(instructions: string, tournamentId?: string): Promise<string> {
   // Check for active tournaments
-  const activeTournaments = await getCurrentTournaments();
-  const upcomingTournaments = await getUpcomingTournaments();
+  const activeTournaments = await getCurrentTournamentsFromDB();
+  const upcomingTournaments = await getUpcomingTournamentsFromDB();
   
   // Check recent news for interesting stories
   const newsResult = await getRecentNews(24);
@@ -186,7 +186,7 @@ async function generateTravelTopic(instructions: string, tournamentId?: string):
     }
   }
   
-  const upcomingTournaments = await getUpcomingTournaments();
+  const upcomingTournaments = await getUpcomingTournamentsFromDB();
   if (upcomingTournaments.length > 0) {
     const tournament = upcomingTournaments[0];
     const alreadyPosted = await hasPostedAboutTournament(tournament.name, 7);

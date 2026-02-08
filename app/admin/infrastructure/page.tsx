@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 interface TableInfo {
   name: string;
@@ -29,6 +29,10 @@ interface IntegrationInfo {
   status: 'active' | 'configured' | 'planned' | 'trial';
   envVar?: string;
   notes?: string;
+  /** Which post types use this integration's data (for display on admin) */
+  postTypes?: string;
+  /** GET endpoint to test this integration (e.g. /api/debug/sportradar) */
+  testEndpoint?: string;
 }
 
 interface BackgroundJob {
@@ -58,10 +62,48 @@ export default function InfrastructurePage() {
   const [activeTab, setActiveTab] = useState('database');
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [loading, setLoading] = useState(true);
+  const [testingIntegration, setTestingIntegration] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<{
+    name: string;
+    ok: boolean;
+    data?: unknown;
+    error?: string;
+    status?: number;
+    /** For "Test all": per-integration results with full response bodies */
+    allResults?: Array<{ name: string; ok: boolean; status?: number; data?: unknown; error?: string }>;
+  } | null>(null);
+  const testResultPanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     loadDatabaseSchema();
   }, []);
+
+  const testIntegration = async (name: string, endpoint: string) => {
+    setTestingIntegration(name);
+    setTestResult(null);
+    try {
+      const res = await fetch(endpoint);
+      const data = await res.json().catch(() => ({ _parseError: 'Response was not JSON' }));
+      const result = {
+        name,
+        ok: res.ok,
+        status: res.status,
+        data,
+        error: res.ok ? undefined : (data?.error || data?.message || `${res.status} ${res.statusText}`),
+      };
+      setTestResult(result);
+      requestAnimationFrame(() => testResultPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+    } catch (err: unknown) {
+      setTestResult({
+        name,
+        ok: false,
+        error: err instanceof Error ? err.message : 'Request failed',
+      });
+      requestAnimationFrame(() => testResultPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+    } finally {
+      setTestingIntegration(null);
+    }
+  };
 
   const loadDatabaseSchema = async () => {
     try {
@@ -331,6 +373,8 @@ export default function InfrastructurePage() {
       status: 'trial',
       envVar: 'SPORTRADAR_API_KEY',
       notes: 'Set USE_MOCK_DATA=true to preserve quota during development',
+      postTypes: 'Tournament previews, travel guides, recaps, calendar sync',
+      testEndpoint: '/api/debug/sportradar',
     },
     {
       name: 'Google Gemini AI',
@@ -340,6 +384,8 @@ export default function InfrastructurePage() {
       why: 'AI-powered content generation with Marshall\'s voice',
       status: 'active',
       envVar: 'GEMINI_API_KEY',
+      postTypes: 'All post types (generates title, excerpt, body, SEO)',
+      testEndpoint: '/api/debug/gemini-models',
     },
     {
       name: 'Unsplash API',
@@ -350,6 +396,7 @@ export default function InfrastructurePage() {
       status: 'active',
       envVar: 'UNSPLASH_ACCESS_KEY',
       notes: 'Free tier: 50 requests/hour. Used for recaps, previews, gear guides, player profiles. Falls back to AI if no match found.',
+      postTypes: 'Recaps, previews, gear guides, player profiles (featured images)',
     },
     {
       name: 'Replicate/Flux',
@@ -360,6 +407,7 @@ export default function InfrastructurePage() {
       status: 'active',
       envVar: 'REPLICATE_API_TOKEN',
       notes: 'Face reference image stored in Supabase Storage. Strategy-based image generation with scene variety (8 lifestyle scenes, 5 analysis scenes). Only used when Marshall needs to appear.',
+      postTypes: 'All post types (featured images when Marshall in shot)',
     },
     {
       name: 'RSS Feeds',
@@ -369,6 +417,8 @@ export default function InfrastructurePage() {
       why: 'Real news data for timely content',
       status: 'active',
       notes: 'Cached 1 hour. Falls back to mock data if feeds unavailable.',
+      postTypes: 'Analysis, recaps, lifestyle, news roundups',
+      testEndpoint: '/api/debug/rss',
     },
     {
       name: 'Open-Meteo API',
@@ -378,6 +428,8 @@ export default function InfrastructurePage() {
       why: 'Real weather data for grounded content',
       status: 'active',
       notes: 'Cached 6 hours. Free tier, no API key needed. Falls back to mock data.',
+      postTypes: 'Travel guides, tournament previews, lifestyle',
+      testEndpoint: '/api/debug/weather',
     },
     {
       name: 'Google Maps API',
@@ -388,6 +440,8 @@ export default function InfrastructurePage() {
       status: 'active',
       envVar: 'GOOGLE_MAPS_API_KEY',
       notes: 'Cached 24 hours. Uses Places API and Directions API. Falls back to mock data.',
+      postTypes: 'Travel guides, lifestyle (hotels, coffee, restaurants, walks)',
+      testEndpoint: '/api/debug/google-maps',
     },
     {
       name: 'YouTube Data API',
@@ -398,6 +452,8 @@ export default function InfrastructurePage() {
       status: 'active',
       envVar: 'YOUTUBE_API_KEY',
       notes: 'Cached 24 hours. Free tier: 10,000 units/day. Falls back to mock data.',
+      postTypes: 'Blast from the past, nostalgia',
+      testEndpoint: '/api/debug/youtube',
     },
     {
       name: 'Sportradar Match Data',
@@ -408,15 +464,32 @@ export default function InfrastructurePage() {
       status: 'trial',
       envVar: 'SPORTRADAR_API_KEY',
       notes: 'Trial expires 03/02/2026. Free alternatives: ATP website scraping, FlashScore scraping, RSS parsing, or manual entry. See free-tennis-data-strategy.md',
+      postTypes: 'Analysis, match previews, recaps',
+      testEndpoint: '/api/debug/sportradar',
     },
     {
-      name: 'Player Data',
+      name: 'Player Data (FreeWebAPI/RapidAPI)',
       type: 'api',
-      description: 'Player rankings, profiles, head-to-head records',
-      when: 'When generating player spotlights or match previews',
-      why: 'Accurate player data for analysis',
-      status: 'planned',
-      notes: 'Will use ATP website scraping (weekly rankings) or manual entry. Free alternative to Sportradar. Cached 1 hour. Falls back to mock data.',
+      description: 'ATP rankings, player search, rising players, event schedules, and tournament results for recaps. Powers player spotlights, ranking mentions, and recap post results.',
+      when: 'When generating player posts, analysis, recaps, or any post (rankings + EventSchedules for today, getTournamentResultsForRecap for recaps)',
+      why: 'Accurate rankings, match schedules, and finished results for recaps',
+      status: 'active',
+      envVar: 'RAPIDAPI_KEY',
+      notes: 'FreeWebAPI Tennis (tennisapi1 on RapidAPI). Test runs: rankings, event schedules (today), tournament results for recap (sample tournament). Optional query: ?recapTournament=Name&recapEndDate=YYYY-MM-DD',
+      postTypes: 'Player profiles, analysis, travel, lifestyle, recaps (results data)',
+      testEndpoint: '/api/debug/freewebapi',
+    },
+    {
+      name: 'Tennis API endpoint explorer',
+      type: 'api',
+      description: 'Test all tennisapi1 (RapidAPI) endpoints: calendar, category events, live events, search, tournament schedules/media/venues. See which return useful data for content calendar, recaps, and match posts.',
+      when: 'Manual test from this page to discover available endpoints',
+      why: 'Decide which endpoints to integrate into posting (calendar, recaps, live, media)',
+      status: 'active',
+      envVar: 'RAPIDAPI_KEY',
+      notes: 'Same key as Player Data. Click Test to run all endpoints and see pass/fail + summary per endpoint.',
+      postTypes: 'Discovery only; informs future integration',
+      testEndpoint: '/api/debug/tennisapi-endpoints',
     },
     {
       name: 'Gear Data',
@@ -426,6 +499,7 @@ export default function InfrastructurePage() {
       why: 'Accurate product data for gear guides, affiliate links, and future quizzes',
       status: 'configured',
       notes: 'Database created. Need to source and populate product data from existing guides (Tennis Warehouse, Tennis Express, etc.).',
+      postTypes: 'Gear guides',
     },
     {
       name: 'Booking.com API',
@@ -435,6 +509,7 @@ export default function InfrastructurePage() {
       why: 'Real pricing data for affiliate links',
       status: 'planned',
       notes: 'May not be needed if using static affiliate links.',
+      postTypes: 'Travel guides (hotels)',
     },
   ];
 
@@ -663,16 +738,166 @@ export default function InfrastructurePage() {
         {/* Third Party Integrations Tab */}
         {activeTab === 'integrations' && (
           <div>
-            <div className="mb-6">
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">Third Party Integrations</h2>
-              <p className="text-gray-600">External APIs and services we're using</p>
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">Third Party Integrations</h2>
+                <p className="text-gray-600">External APIs and services we're using</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  const withEndpoint = integrations.filter((i) => i.testEndpoint);
+                  if (withEndpoint.length === 0) return;
+                  setTestResult(null);
+                  (async () => {
+                    const allResults: Array<{ name: string; ok: boolean; status?: number; data?: unknown; error?: string }> = [];
+                    for (const i of withEndpoint) {
+                      try {
+                        const res = await fetch(i.testEndpoint!);
+                        const data = await res.json().catch(() => ({}));
+                        allResults.push({
+                          name: i.name,
+                          ok: res.ok,
+                          status: res.status,
+                          data,
+                          error: res.ok ? undefined : (data?.error || data?.message || `${res.status}`),
+                        });
+                      } catch (e) {
+                        allResults.push({ name: i.name, ok: false, error: 'Request failed' });
+                      }
+                    }
+                    setTestResult({
+                      name: 'All',
+                      ok: allResults.every((r) => r.ok),
+                      allResults,
+                    });
+                    requestAnimationFrame(() => testResultPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+                  })();
+                }}
+                className="px-4 py-2 rounded-lg bg-gray-800 text-white text-sm font-medium hover:bg-gray-700"
+              >
+                Test all
+              </button>
             </div>
+            {testResult && (
+              <div
+                ref={testResultPanelRef}
+                className={`mb-4 p-4 rounded-lg border text-sm ${testResult.ok ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`}
+              >
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="font-semibold">
+                    {testResult.name} {testResult.ok ? '✓' : '✗'}
+                    {testResult.status != null && (
+                      <span className="ml-2 text-xs font-normal opacity-90">HTTP {testResult.status}</span>
+                    )}
+                  </div>
+                  <button type="button" onClick={() => setTestResult(null)} className="text-xs underline hover:no-underline">
+                    Dismiss
+                  </button>
+                </div>
+                {testResult.error && <p className="mt-1">{testResult.error}</p>}
+
+                {/* When response includes a tests summary (e.g. FreeWebAPI), show pass/fail first */}
+                {testResult.allResults == null && testResult.data !== undefined && typeof testResult.data === 'object' && testResult.data !== null && 'tests' in testResult.data && (
+                  <div className="mt-3 p-3 bg-white/80 rounded border border-gray-200">
+                    <div className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">Endpoint checks</div>
+                    <ul className="flex flex-wrap gap-3 text-sm">
+                      {Object.entries((testResult.data as { tests?: Record<string, string> }).tests ?? {}).map(([name, status]) => (
+                        <li key={name} className="flex items-center gap-1.5">
+                          <span className={status === 'pass' ? 'text-green-600' : status === 'fail' ? 'text-red-600' : 'text-amber-600'}>
+                            {status === 'pass' ? '✓' : status === 'fail' ? '✗' : '○'}
+                          </span>
+                          <span className="font-medium">{name}</span>
+                          <span className="text-gray-500">({status})</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Tennis API endpoint explorer: table of endpoints with status and summary */}
+                {testResult.allResults == null && testResult.data !== undefined && typeof testResult.data === 'object' && testResult.data !== null && 'endpoints' in testResult.data && Array.isArray((testResult.data as { endpoints?: unknown[] }).endpoints) && (
+                  <div className="mt-3 p-3 bg-white/80 rounded border border-gray-200 overflow-x-auto">
+                    <div className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">Endpoints</div>
+                    <table className="w-full text-sm border-collapse">
+                      <thead>
+                        <tr className="border-b border-gray-200 text-left">
+                          <th className="py-2 pr-3 font-semibold text-gray-700">Endpoint</th>
+                          <th className="py-2 pr-3 font-semibold text-gray-700">Description</th>
+                          <th className="py-2 pr-3 font-semibold text-gray-700">Useful for</th>
+                          <th className="py-2 pr-3 font-semibold text-gray-700">Status</th>
+                          <th className="py-2 pr-3 font-semibold text-gray-700">Summary</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {((testResult.data as { endpoints: Array<{ name: string; description: string; usefulFor?: string; status: number; ok: boolean; summary: string; error?: string }> }).endpoints).map((ep) => (
+                          <tr key={ep.name} className="border-b border-gray-100">
+                            <td className="py-2 pr-3 font-mono text-xs">{ep.name}</td>
+                            <td className="py-2 pr-3 text-gray-700 max-w-[200px]">{ep.description}</td>
+                            <td className="py-2 pr-3 text-gray-600 max-w-[180px] text-xs">{ep.usefulFor ?? '—'}</td>
+                            <td className="py-2 pr-3">
+                              <span className={ep.ok ? 'text-green-600' : 'text-red-600'}>
+                                {ep.ok ? '✓' : '✗'} {ep.status}
+                              </span>
+                            </td>
+                            <td className="py-2 pr-3 text-gray-700">{ep.error ?? ep.summary}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Single integration: show full response */}
+                {testResult.allResults == null && testResult.data !== undefined && (
+                  <div className="mt-3">
+                    <div className="text-xs font-semibold text-gray-700 mb-1 uppercase tracking-wide">Response</div>
+                    <pre className="p-3 bg-white/80 rounded border border-gray-200 overflow-auto max-h-[70vh] text-xs text-gray-900 font-mono whitespace-pre">
+                      {typeof testResult.data === 'object' && testResult.data !== null
+                        ? JSON.stringify(testResult.data, null, 2)
+                        : String(testResult.data)}
+                    </pre>
+                  </div>
+                )}
+
+                {/* Test all: summary list + expandable response per integration */}
+                {testResult.allResults != null && (
+                  <div className="mt-3 space-y-2">
+                    <div className="text-xs font-semibold text-gray-700 mb-1 uppercase tracking-wide">Results</div>
+                    <ul className="list-none space-y-1">
+                      {testResult.allResults.map((r) => (
+                        <li key={r.name} className="bg-white/60 rounded border border-gray-200 overflow-hidden">
+                          <details className="group">
+                            <summary className="px-3 py-2 cursor-pointer list-none flex items-center justify-between gap-2 flex-wrap">
+                              <span>
+                                {r.ok ? '✓' : '✗'} {r.name}
+                                {r.status != null && <span className="text-xs opacity-80 ml-1">({r.status})</span>}
+                              </span>
+                              <span className="text-xs text-gray-600 group-open:hidden">View response</span>
+                            </summary>
+                            <div className="px-3 pb-3 pt-0 border-t border-gray-200">
+                              <pre className="mt-2 p-3 bg-white rounded overflow-auto max-h-64 text-xs font-mono text-gray-900 whitespace-pre">
+                                {r.data !== undefined
+                                  ? (typeof r.data === 'object' && r.data !== null
+                                    ? JSON.stringify(r.data, null, 2)
+                                    : String(r.data))
+                                  : r.error ?? 'No body'}
+                              </pre>
+                            </div>
+                          </details>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-1 gap-4">
               {integrations.map(integration => (
                 <div key={integration.name} className="bg-white rounded-lg shadow border border-gray-200 p-5">
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-3 mb-2 flex-wrap">
                         <h3 className="text-lg font-bold text-gray-900">{integration.name}</h3>
                         <span className={`px-2 py-1 rounded text-xs font-semibold ${
                           integration.status === 'active' ? 'bg-green-100 text-green-800' :
@@ -687,6 +912,12 @@ export default function InfrastructurePage() {
                         </span>
                       </div>
                       <p className="text-gray-600 mb-3">{integration.description}</p>
+                      {integration.postTypes && (
+                        <p className="text-sm text-gray-700 mb-2">
+                          <span className="font-semibold">Influences post types:</span>{' '}
+                          <span className="text-gray-600">{integration.postTypes}</span>
+                        </p>
+                      )}
                       <div className="grid grid-cols-2 gap-4 text-sm">
                         <div>
                           <span className="font-semibold text-gray-700">When:</span>
@@ -708,6 +939,18 @@ export default function InfrastructurePage() {
                         </div>
                       )}
                     </div>
+                    {integration.testEndpoint && (
+                      <div className="flex-shrink-0">
+                        <button
+                          type="button"
+                          disabled={testingIntegration !== null}
+                          onClick={() => testIntegration(integration.name, integration.testEndpoint!)}
+                          className="px-3 py-1.5 rounded-lg bg-gray-200 text-gray-800 text-sm font-medium hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {testingIntegration === integration.name ? 'Testing…' : 'Test'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

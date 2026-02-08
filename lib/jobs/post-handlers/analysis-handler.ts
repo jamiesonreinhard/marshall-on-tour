@@ -7,10 +7,13 @@
 
 import { HandlerContext, HandlerData, HandlerResult } from './types';
 import { createAdminSupabase } from '@/lib/supabase/server';
+import { getMarshallState } from '@/lib/marshall/state';
 import { getPlayerProfile, getHeadToHead, getPlayerRankings } from '@/lib/data/integrations/player-data';
 import { getRecentNews } from '@/lib/data/integrations/rss';
 import { getTournamentMatches, getTodaysMatches } from '@/lib/data/integrations/sportradar-matches';
+import { getTournamentResultsForRecap } from '@/lib/data/integrations/freewebapi';
 import { getTournamentWeather } from '@/lib/data/integrations/weather';
+import { searchTennisVideos } from '@/lib/data/integrations/youtube';
 import { analyzeRecentPosts } from '@/lib/data/processor';
 
 export async function handleAnalysisPost(
@@ -51,8 +54,19 @@ export async function handleAnalysisPost(
           dataSources.push(`H2H: ${players[0]} vs ${players[1]}`);
         }
       }
+
+      // YouTube: highlights for primary player(s) so the post can include video links
+      const primaryPlayer = players[0];
+      const videoQuery = primaryPlayer ? `${primaryPlayer} tennis highlights` : '';
+      if (videoQuery) {
+        const videosResult = await searchTennisVideos(videoQuery, 5);
+        if (videosResult.success && videosResult.data && videosResult.data.length > 0) {
+          richData.videos = videosResult.data;
+          dataSources.push(`YouTube: ${videosResult.data.length} videos`);
+        }
+      }
     }
-    
+
     // 4. Get tournament data if available
     let tournament;
     let tournamentNews = null;
@@ -75,15 +89,29 @@ export async function handleAnalysisPost(
             ? `${location.city}, ${location.country}`
             : location.city || location.country || '',
           startDate: tournamentData.start_date,
+          endDate: tournamentData.end_date,
         };
         dataSources.push(`Tournament: ${tournamentData.name}`);
         
-        // Get match data
+        // Get match data: tournament-specific (Sportradar/mock) then today's from FreeWebAPI
         const matchesResult = await getTournamentMatches(tournamentData.id);
-        if (matchesResult.success && matchesResult.data) {
+        if (matchesResult.success && matchesResult.data && matchesResult.data.length > 0) {
           matchData = matchesResult.data;
           richData.matches = matchData;
           dataSources.push(`Matches: ${matchData.length} found`);
+        } else {
+          const todaysResult = await getTodaysMatches();
+          if (todaysResult.success && todaysResult.data && todaysResult.data.length > 0) {
+            const tournamentNameLower = tournamentData.name.toLowerCase();
+            const forTournament = todaysResult.data.filter(
+              (m) => (m.tournament_name || '').toLowerCase().includes(tournamentNameLower) || tournamentNameLower.includes((m.tournament_name || '').toLowerCase())
+            );
+            if (forTournament.length > 0) {
+              matchData = forTournament;
+              richData.matches = matchData;
+              dataSources.push(`Matches (today): ${matchData.length} found`);
+            }
+          }
         }
         
         // Get weather for tournament location (only if city and country are available)
@@ -103,6 +131,19 @@ export async function handleAnalysisPost(
                     opportunity.topic.toLowerCase().includes('recap') ||
                     opportunity.topic.toLowerCase().includes('final');
     
+    // For recaps: fetch finished match results from FreeWebAPI (EventSchedules for tournament's final days)
+    if (isRecap && tournament?.name && tournament?.endDate) {
+      const resultsResult = await getTournamentResultsForRecap(
+        tournament.name,
+        tournament.endDate,
+        { fallbackToMock: false }
+      );
+      if (resultsResult.success && resultsResult.data && resultsResult.data.length > 0) {
+        richData.tournamentResults = resultsResult.data;
+        dataSources.push(`Tournament results (FreeWebAPI): ${resultsResult.data.length} finished matches`);
+      }
+    }
+
     if (isRecap || opportunity.type === 'news') {
       const newsResult = await getRecentNews(48); // Last 48 hours
       if (newsResult.success && newsResult.data) {
@@ -135,6 +176,12 @@ export async function handleAnalysisPost(
       richData.rankings = rankingsResult.data.slice(0, 20); // Top 20
       dataSources.push('Rankings: Top 20');
     }
+
+    // 7. Marshall's current state (location, gear, player he's watching)
+    const marshallState = await getMarshallState();
+    if (marshallState) {
+      dataSources.push('Marshall state: current location & gear');
+    }
     
     // Build context for Gemini
     const context: any = {
@@ -145,7 +192,17 @@ export async function handleAnalysisPost(
       isRecap,
       tournamentNews: tournamentNews || undefined,
     };
-    
+    // News-driven opportunity: pass the selected news item so prompt says "write Marshall's take on this story"
+    if (opportunity.type === 'news' && opportunity.metadata?.newsItem) {
+      const ni = opportunity.metadata.newsItem as { title: string; description: string; source: string; url?: string };
+      context.newsItem = {
+        title: ni.title,
+        description: ni.description || '',
+        source: ni.source,
+      };
+      dataSources.push(`News: ${ni.title.slice(0, 40)}...`);
+    }
+
     // Add rich data to context for prompt building
     if (richData.players) {
       context.players = richData.players;
@@ -156,13 +213,38 @@ export async function handleAnalysisPost(
     if (richData.matches) {
       context.matches = richData.matches;
     }
+    if (richData.tournamentResults) {
+      context.tournamentResults = richData.tournamentResults;
+    }
     if (richData.weather) {
       context.weather = richData.weather;
     }
     if (richData.rankings) {
       context.rankings = richData.rankings;
     }
-    
+    if (opportunity.metadata?.previousRanking != null || opportunity.metadata?.points != null || opportunity.metadata?.bestRanking != null) {
+      context.playerRankingStats = {
+        previousRanking: opportunity.metadata.previousRanking,
+        points: opportunity.metadata.points,
+        bestRanking: opportunity.metadata.bestRanking,
+      };
+    }
+    if (richData.videos) {
+      context.videos = richData.videos;
+    }
+    if (marshallState) {
+      context.marshallState = marshallState;
+    }
+    // Real data from content-intelligence: today's matches and live event count (for day updates / live posts)
+    if (opportunity.metadata?.todayMatches && Array.isArray(opportunity.metadata.todayMatches) && opportunity.metadata.todayMatches.length > 0) {
+      context.todayMatches = opportunity.metadata.todayMatches;
+      dataSources.push(`Today's matches: ${opportunity.metadata.todayMatches.length} (from API)`);
+    }
+    if (typeof opportunity.metadata?.liveEventsCount === 'number' && opportunity.metadata.liveEventsCount > 0) {
+      context.liveEventsCount = opportunity.metadata.liveEventsCount;
+      dataSources.push(`Live events now: ${opportunity.metadata.liveEventsCount}`);
+    }
+
     return {
       success: true,
       data: {

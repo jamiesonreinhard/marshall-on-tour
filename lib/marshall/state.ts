@@ -15,6 +15,8 @@ export interface MarshallState {
   other_gear?: Record<string, any>;
   current_city?: string;
   current_country?: string;
+  /** The one tournament Marshall is currently at; location derives from it. Updated only on arrival/departure. */
+  current_tournament_id?: string;
   current_hotel?: string;
   current_hotel_affiliate_link?: string;
   current_coffee_shop?: string;
@@ -115,64 +117,148 @@ export async function updateMarshallState(
 }
 
 /**
- * Update Marshall's location when tournament starts
+ * Update Marshall's location when he arrives at a tournament.
+ * Only updates when this tournament is his next_tournament_id (or we're initializing with no current).
  */
 export async function updateLocationForTournament(
   tournamentId: string,
   tournamentName: string
-): Promise<void> {
+): Promise<boolean> {
+  const current = await getMarshallState();
+  // Only update when this tournament is his designated next, or we have no current (initialization)
+  if (current?.next_tournament_id && current.next_tournament_id !== tournamentId) {
+    return false;
+  }
+  if (current?.current_tournament_id && current.current_tournament_id !== tournamentId) {
+    // Already at a different tournament; don't overwrite
+    return false;
+  }
+
   const supabase = createAdminSupabase();
-  
-  // Get tournament details
   const { data: tournament } = await supabase
     .from('atp_calendar')
     .select('name, location, start_date, end_date')
     .eq('id', tournamentId)
     .single();
-  
-  if (!tournament) return;
-  
+
+  if (!tournament) return false;
+
   const location = tournament.location as { city?: string; country?: string };
-  
+
   const updates: Partial<MarshallState> = {
+    current_tournament_id: tournamentId,
     current_city: location.city,
     current_country: location.country,
     arrived_at: new Date().toISOString(),
+    next_tournament_id: undefined,
   };
-  
+
   if (tournament.end_date) {
     updates.leaving_at = new Date(tournament.end_date).toISOString();
   }
-  
-  // Clear next tournament since we're here (omit the field to clear it)
-  updates.next_tournament_id = undefined;
-  
+
   await updateMarshallState(updates, 'system');
+  return true;
+}
+
+/** European countries for "prefer Europe when choosing next/current tournament" (same as scoring). */
+const EUROPEAN_COUNTRIES = new Set([
+  'Albania', 'Andorra', 'Armenia', 'Austria', 'Belarus', 'Belgium', 'Bosnia and Herzegovina',
+  'Bulgaria', 'Croatia', 'Cyprus', 'Czech Republic', 'Denmark', 'Estonia', 'Finland',
+  'France', 'Georgia', 'Germany', 'Greece', 'Hungary', 'Iceland', 'Ireland', 'Italy',
+  'Kazakhstan', 'Kosovo', 'Latvia', 'Liechtenstein', 'Lithuania', 'Luxembourg', 'Malta',
+  'Moldova', 'Monaco', 'Montenegro', 'Netherlands', 'North Macedonia', 'Norway', 'Poland',
+  'Portugal', 'Romania', 'Russia', 'San Marino', 'Serbia', 'Slovakia', 'Slovenia', 'Spain',
+  'Sweden', 'Switzerland', 'Turkey', 'Ukraine', 'United Kingdom', 'UK', 'Vatican City',
+]);
+
+function isAmericanSwing(): boolean {
+  const month = new Date().getMonth() + 1; // 1–12
+  return month === 3 || month === 8 || month === 9; // March (IW/Miami), Aug–Sep (US Open)
+}
+
+export interface TournamentForPreference {
+  id: string;
+  name: string;
+  location?: { city?: string; country?: string };
+  start_date?: string;
 }
 
 /**
- * Update next location when tournament ends
+ * Pick the preferred "next" or "current" tournament when several are possible.
+ * Prefer European tournaments over others (e.g. Rotterdam over Dallas); during American swing (Mar, Aug, Sep) US is allowed.
  */
-export async function updateNextLocation(tournamentId: string): Promise<void> {
+export function selectTournamentByRegionPreference(tournaments: TournamentForPreference[]): TournamentForPreference | null {
+  if (!tournaments.length) return null;
+  const americanSwing = isAmericanSwing();
+  const country = (t: TournamentForPreference) => (t.location as { country?: string } | undefined)?.country ?? '';
+  const isEuropean = (t: TournamentForPreference) => country(t) && EUROPEAN_COUNTRIES.has(country(t));
+  const isUSA = (t: TournamentForPreference) => {
+    const c = country(t);
+    return c === 'United States' || c === 'USA' || c === 'US';
+  };
+  const sorted = [...tournaments].sort((a, b) => {
+    const aEuro = isEuropean(a);
+    const bEuro = isEuropean(b);
+    const aUS = isUSA(a);
+    const bUS = isUSA(b);
+    if (!americanSwing) {
+      // Prefer Europe
+      if (aEuro && !bEuro) return -1;
+      if (!aEuro && bEuro) return 1;
+    } else {
+      // American swing: US can compete
+      if (aUS && !bUS) return -1;
+      if (!aUS && bUS) return 1;
+    }
+    // Tie-break: earliest start_date
+    return (a.start_date || '').localeCompare(b.start_date || '');
+  });
+  return sorted[0];
+}
+
+/**
+ * Update next location when Marshall's current tournament ends.
+ * Only runs when tournamentId is his current_tournament_id.
+ * Picks next tournament with European preference (Rotterdam over Dallas when both upcoming).
+ */
+export async function updateNextLocation(tournamentId: string): Promise<boolean> {
+  const current = await getMarshallState();
+  if (!current || current.current_tournament_id !== tournamentId) {
+    return false;
+  }
+
   const supabase = createAdminSupabase();
-  
-  // Find next tournament
-  const { data: nextTournament } = await supabase
+  const { data: upcoming } = await supabase
     .from('atp_calendar')
     .select('id, name, location, start_date')
-    .gt('start_date', new Date().toISOString())
+    .gt('start_date', new Date().toISOString().split('T')[0])
     .order('start_date', { ascending: true })
-    .limit(1)
-    .single();
-  
-  if (!nextTournament) return;
-  
-  const location = nextTournament.location as { city?: string; country?: string };
-  
-  await updateMarshallState({
-    next_city: location.city,
-    next_country: location.country,
-    next_tournament_id: nextTournament.id,
-    traveling_to_at: nextTournament.start_date ? new Date(nextTournament.start_date).toISOString() : undefined,
-  }, 'system');
+    .limit(15);
+
+  const nextTournament = selectTournamentByRegionPreference(upcoming ?? []);
+
+  const updates: Partial<MarshallState> = {
+    current_tournament_id: undefined,
+    current_city: undefined,
+    current_country: undefined,
+    arrived_at: undefined,
+    leaving_at: undefined,
+  };
+
+  if (nextTournament) {
+    const location = nextTournament.location as { city?: string; country?: string };
+    updates.next_city = location.city;
+    updates.next_country = location.country;
+    updates.next_tournament_id = nextTournament.id;
+    updates.traveling_to_at = nextTournament.start_date ? new Date(nextTournament.start_date).toISOString() : undefined;
+  } else {
+    updates.next_tournament_id = undefined;
+    updates.next_city = undefined;
+    updates.next_country = undefined;
+    updates.traveling_to_at = undefined;
+  }
+
+  await updateMarshallState(updates, 'system');
+  return true;
 }

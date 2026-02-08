@@ -1,11 +1,18 @@
 /**
  * Player Data Integration
- * 
- * Fetches player rankings, profiles, and statistics
- * Sources: ATP website, Sportradar API, or manual database
+ *
+ * Fetches player rankings, profiles, and statistics.
+ * Primary source: FreeWebAPI (RapidAPI tennisapi1) when RAPIDAPI_KEY is set.
+ * Fallback: mock data for development.
  */
 
 import { Player, DataSourceResult, DataSourceConfig } from './types';
+import {
+  isFreeWebApiConfigured,
+  getATPRankings as getFreeWebApiRankings,
+  getPlayerByName as getFreeWebApiPlayerByName,
+  getHeadToHeadByNames as getFreeWebApiHeadToHead,
+} from './freewebapi';
 
 const DEFAULT_CONFIG: DataSourceConfig = {
   enabled: true,
@@ -14,7 +21,8 @@ const DEFAULT_CONFIG: DataSourceConfig = {
 };
 
 /**
- * Get player rankings (ATP Top 100)
+ * Get player rankings (ATP Top 100).
+ * Uses FreeWebAPI when RAPIDAPI_KEY (or FREEWEBAPI_RAPIDAPI_KEY) is set.
  */
 export async function getPlayerRankings(
   config: DataSourceConfig = DEFAULT_CONFIG
@@ -28,10 +36,15 @@ export async function getPlayerRankings(
       source: 'player-data',
     };
   }
-  
-  // TODO: Implement actual API call to Sportradar or ATP website
-  // For now, return mock data
-  
+
+  if (isFreeWebApiConfigured()) {
+    const result = await getFreeWebApiRankings(config);
+    if (result.success && result.data && result.data.length > 0) {
+      return result;
+    }
+    // API failed; fall through to mock if allowed
+  }
+
   if (config.fallbackToMock) {
     return {
       success: true,
@@ -40,18 +53,19 @@ export async function getPlayerRankings(
       source: 'player-data-mock',
     };
   }
-  
+
   return {
     success: false,
     data: null,
-    error: 'Player data API not implemented yet',
+    error: 'Player data API not available (set RAPIDAPI_KEY for FreeWebAPI)',
     cached: false,
     source: 'player-data',
   };
 }
 
 /**
- * Get player profile by name
+ * Get player profile by name.
+ * Uses FreeWebAPI search/rankings when RAPIDAPI_KEY is set.
  */
 export async function getPlayerProfile(
   playerName: string,
@@ -66,16 +80,17 @@ export async function getPlayerProfile(
       source: 'player-data',
     };
   }
-  
-  // TODO: Implement actual API call
-  // For now, search mock data
-  
+
+  if (isFreeWebApiConfigured()) {
+    const result = await getFreeWebApiPlayerByName(playerName, config);
+    if (result.success && result.data) return result;
+  }
+
   if (config.fallbackToMock) {
     const rankings = getMockRankings();
-    const player = rankings.find(p => 
+    const player = rankings.find((p) =>
       p.name.toLowerCase().includes(playerName.toLowerCase())
     );
-    
     if (player) {
       return {
         success: true,
@@ -85,7 +100,7 @@ export async function getPlayerProfile(
       };
     }
   }
-  
+
   return {
     success: false,
     data: null,
@@ -96,7 +111,8 @@ export async function getPlayerProfile(
 }
 
 /**
- * Get head-to-head record between two players
+ * Get head-to-head record between two players.
+ * Uses FreeWebAPI when RAPIDAPI_KEY is set.
  */
 export async function getHeadToHead(
   player1Name: string,
@@ -112,26 +128,25 @@ export async function getHeadToHead(
       source: 'player-data',
     };
   }
-  
-  // TODO: Implement actual API call to Sportradar or ATP
-  // For now, return mock data
-  
+
+  if (isFreeWebApiConfigured()) {
+    const result = await getFreeWebApiHeadToHead(player1Name, player2Name, config);
+    if (result.success && result.data) return result;
+  }
+
   if (config.fallbackToMock) {
     return {
       success: true,
-      data: {
-        player1Wins: 5,
-        player2Wins: 3,
-      },
+      data: { player1Wins: 5, player2Wins: 3 },
       cached: false,
       source: 'player-data-mock',
     };
   }
-  
+
   return {
     success: false,
     data: null,
-    error: 'Head-to-head data not implemented yet',
+    error: 'Head-to-head data not available',
     cached: false,
     source: 'player-data',
   };

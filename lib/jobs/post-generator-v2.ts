@@ -13,7 +13,7 @@
 
 import { createAdminSupabase } from '@/lib/supabase/server';
 import { generatePostContent } from '@/lib/ai/gemini';
-import { generatePostImage } from '@/lib/ai/images';
+import { generatePostImage, type ImageResult } from '@/lib/ai/images';
 import { factCheckPost } from '@/lib/ai/fact-checker';
 import { editPost } from '@/lib/ai/editor';
 import { ContentOpportunity } from './scoring';
@@ -31,6 +31,8 @@ import {
   logMissingData,
   logGenerationResult,
 } from './content-logger';
+import { checkContentQuality } from './content-quality';
+import { postBlogToX } from '@/lib/social/x';
 
 export interface GeneratePostOptions {
   publish?: boolean;
@@ -114,6 +116,27 @@ export async function generatePostFromOpportunityV2(
     // Get prompt length for logging (we'll need to estimate or get it from Gemini)
     const postContent = await generatePostContent(context);
     
+    // Guarantee video links: if we had videos for the prompt but content has no YouTube link, append a Watch section
+    let finalContent = postContent.content;
+    let hadToInjectVideos = false;
+    const videos = (context as any).videos as Array<{ title?: string; url: string }> | undefined;
+    if (videos && videos.length > 0 && !/youtube\.com|youtu\.be/.test(finalContent)) {
+      const watchSection = [
+        '\n\n## Watch',
+        '',
+        ...videos.slice(0, 3).map((v) => `- [${v.title || 'Watch'}](${v.url})`),
+      ].join('\n');
+      finalContent = finalContent.trimEnd() + watchSection;
+      hadToInjectVideos = true;
+      console.log(`[Post Generator V2] Injected ${Math.min(3, videos.length)} video links (Gemini did not include them)`);
+    }
+
+    // Content quality gates: flag for review if video/Marshall/AFF checks fail
+    const quality = checkContentQuality(finalContent, context as any, { hadToInjectVideos });
+    if (quality.needsReview) {
+      console.log(`[Post Generator V2] Content quality: needs review – ${quality.reasons.join('; ')}`);
+    }
+    
     // Estimate prompt length (we'll log actual in a moment)
     const estimatedPromptLength = JSON.stringify(context).length;
     logPromptInfo(context, estimatedPromptLength);
@@ -133,10 +156,9 @@ export async function generatePostFromOpportunityV2(
     
     // 3. Fact check
     console.log(`[Post Generator V2] Fact-checking...`);
-    const factCheckResult = await factCheckPost(postContent.content, context);
+    const factCheckResult = await factCheckPost(finalContent, context);
     
     // 4. Edit if needed
-    let finalContent = postContent.content;
     let editorMadeChanges = false;
     if (factCheckResult.hasIssues) {
       console.log(`[Post Generator V2] Found ${factCheckResult.issues.length} fact-check issues, editing...`);
@@ -188,21 +210,28 @@ export async function generatePostFromOpportunityV2(
       imageContext.includeMarshall = includeMarshall;
     }
     
-    const imageUrl = await generatePostImage(imageContext);
-    
+    const imageResult: ImageResult = await generatePostImage(imageContext);
+    const imageUrl = typeof imageResult === 'object' ? imageResult.url : imageResult;
+    const imageAttribution = typeof imageResult === 'object' ? imageResult.attribution : null;
+    const contentWithAttribution =
+      imageAttribution
+        ? finalContent.trimEnd() + '\n\n---\n\n*Featured image: ' + imageAttribution + '*'
+        : finalContent;
+
     // 7. Create slug
     const slug = postContent.title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')
       .slice(0, 100);
-    
-    // 8. Save to database
+
+    // 8. Save to database (only columns that exist in base posts schema — no needs_review/content_quality_notes unless migration applied)
+    const supabase = createAdminSupabase();
     const postData = {
       slug,
       title: postContent.title,
       excerpt: postContent.excerpt,
-      content: finalContent,
+      content: contentWithAttribution,
       category: dbCategory,
       featured_image: imageUrl,
       meta_title: postContent.metaTitle || postContent.title,
@@ -216,20 +245,33 @@ export async function generatePostFromOpportunityV2(
       published_at: publish ? new Date().toISOString() : null,
       affiliate_links: [],
     };
-    
-    const supabase = createAdminSupabase();
     const { data: post, error: dbError } = await supabase
       .from('posts')
       .insert(postData)
-      .select()
+      .select('id, slug, title, created_at')
       .single();
-    
+
     if (dbError || !post) {
       throw new Error(dbError?.message || 'Failed to save post');
     }
-    
+
     console.log(`[Post Generator V2] ✅ Post created: ${post.id} (${publish ? 'published' : 'draft'})`);
-    
+
+    // When published, post to X (hook + link, same image or no image)
+    if (publish && post.slug) {
+      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://marshallontour.com';
+      const blogUrl = `${baseUrl.replace(/\/$/, '')}/blog/${post.slug}`;
+      const xResult = await postBlogToX({
+        blogUrl,
+        title: postContent.title,
+        excerpt: postContent.excerpt,
+        imageUrl: imageUrl || null,
+      });
+      if (!xResult.success) {
+        console.warn(`[Post Generator V2] X post skipped or failed: ${xResult.error}`);
+      }
+    }
+
     // Log generation result
     logGenerationResult({
       success: true,

@@ -1,99 +1,69 @@
 import { NextResponse } from 'next/server';
-import { getATPTournaments, getUpcomingTournaments, getCurrentTournaments, getATPRankings } from '@/lib/data/sportradar';
-import { getTennisNews, getRecentNews, getNewsFromSource } from '@/lib/data/rss';
+import { getCurrentTournamentsFromDB, getUpcomingTournamentsFromDB } from '@/lib/data/tournaments-from-db';
+import { getATPRankings, getEventSchedules } from '@/lib/data/integrations/freewebapi';
+import { fetchTennisNews, getRecentNews } from '@/lib/data/integrations/rss';
 
 /**
- * Debug endpoint to view raw data from RSS and Sportradar
- * 
+ * Debug endpoint: data from free stack only (no Sportradar).
+ *
  * GET /api/debug/data-sources
- * 
- * Shows what data is being fetched from:
- * - Sportradar API (tournaments, rankings)
- * - RSS feeds (news)
+ *
+ * Returns:
+ * - Tournaments: atp_calendar (current + upcoming)
+ * - Rankings + today's matches: FreeWebAPI (RapidAPI)
+ * - News: RSS (ESPN, BBC, Tennis.com)
  */
 
 export async function GET() {
   try {
-    // Fetch all data sources in parallel
+    const today = new Date().toISOString().split('T')[0];
+
     const [
-      allTournaments,
-      upcomingTournaments,
       currentTournaments,
-      rankings,
-      allNews,
-      recentNews,
-      espnNews,
-      bbcNews,
-      tennisComNews,
+      upcomingTournaments,
+      rankingsResult,
+      todaysMatchesResult,
+      allNewsResult,
+      recentNewsResult,
     ] = await Promise.all([
-      getATPTournaments(),
-      getUpcomingTournaments(),
-      getCurrentTournaments(),
+      getCurrentTournamentsFromDB(),
+      getUpcomingTournamentsFromDB(),
       getATPRankings(),
-      getTennisNews(20),
+      getEventSchedules(today),
+      fetchTennisNews(),
       getRecentNews(24),
-      getNewsFromSource('espn', 5),
-      getNewsFromSource('bbc', 5),
-      getNewsFromSource('tennisCom', 5),
     ]);
 
-    return NextResponse.json({
-      timestamp: new Date().toISOString(),
-      sportradar: {
-        allTournaments: {
-          count: allTournaments.length,
-          tournaments: allTournaments.slice(0, 5), // First 5
+    const rankings = rankingsResult.success && rankingsResult.data ? rankingsResult.data : [];
+    const todaysMatches = todaysMatchesResult.success && todaysMatchesResult.data ? todaysMatchesResult.data : [];
+    const allNews = allNewsResult.success && allNewsResult.data ? allNewsResult.data : [];
+    const recentNews = recentNewsResult.success && recentNewsResult.data ? recentNewsResult.data : [];
+
+    return NextResponse.json(
+      {
+        timestamp: new Date().toISOString(),
+        tournaments: {
+          current: { count: currentTournaments.length, tournaments: currentTournaments },
+          upcoming: { count: upcomingTournaments.length, tournaments: upcomingTournaments },
         },
-        upcomingTournaments: {
-          count: upcomingTournaments.length,
-          tournaments: upcomingTournaments,
+        freewebapi: {
+          rankings: { count: rankings.length, top10: rankings.slice(0, 10) },
+          todaysMatches: { count: todaysMatches.length, matches: todaysMatches.slice(0, 20) },
         },
-        currentTournaments: {
-          count: currentTournaments.length,
-          tournaments: currentTournaments,
+        rss: {
+          allNews: { count: allNews.length, items: allNews.slice(0, 5) },
+          recentNews: { count: recentNews.length, items: recentNews },
         },
-        rankings: {
-          count: rankings.length,
-          top10: rankings.slice(0, 10),
-        },
-      },
-      rss: {
-        allNews: {
-          count: allNews.length,
-          items: allNews.slice(0, 5), // First 5
-        },
-        recentNews: {
-          count: recentNews.length,
-          items: recentNews,
-        },
-        bySource: {
-          espn: {
-            count: espnNews.length,
-            items: espnNews,
-          },
-          bbc: {
-            count: bbcNews.length,
-            items: bbcNews,
-          },
-          tennisCom: {
-            count: tennisComNews.length,
-            items: tennisComNews,
-          },
+        summary: {
+          currentTournaments: currentTournaments.length,
+          upcomingTournaments: upcomingTournaments.length,
+          topRankedPlayers: rankings.slice(0, 5).map((p) => p.name),
+          todaysMatchesCount: todaysMatches.length,
+          recentNewsCount: recentNews.length,
         },
       },
-      summary: {
-        totalTournaments: allTournaments.length,
-        upcomingCount: upcomingTournaments.length,
-        currentCount: currentTournaments.length,
-        totalNewsItems: allNews.length,
-        recentNewsCount: recentNews.length,
-        topRankedPlayers: rankings.slice(0, 5).map(p => p.name),
-      },
-    }, {
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+      { headers: { 'Content-Type': 'application/json' } }
+    );
   } catch (error: any) {
     return NextResponse.json(
       {

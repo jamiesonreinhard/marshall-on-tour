@@ -1,12 +1,13 @@
 /**
- * Sportradar Match Data Integration
- * 
- * Fetches match schedules and results from Sportradar API
- * Extends the existing sportradar.ts with match-specific functions
+ * Match Data Integration
+ *
+ * Prefers FreeWebAPI (RapidAPI tennis) for today's matches when RAPIDAPI_KEY is set.
+ * Falls back to Sportradar when configured, then mock.
  */
 
 import { Match, DataSourceResult, DataSourceConfig } from './types';
 import { getATPTournaments } from '../sportradar';
+import { getEventSchedules, isFreeWebApiConfigured } from './freewebapi';
 
 const DEFAULT_CONFIG: DataSourceConfig = {
   enabled: true,
@@ -99,7 +100,7 @@ export async function getTournamentMatches(
 }
 
 /**
- * Get today's matches for active tournaments
+ * Get today's matches. Uses FreeWebAPI (RapidAPI) when RAPIDAPI_KEY is set; otherwise Sportradar or mock.
  */
 export async function getTodaysMatches(
   config: DataSourceConfig = DEFAULT_CONFIG
@@ -108,39 +109,45 @@ export async function getTodaysMatches(
     return {
       success: false,
       data: null,
-      error: 'Sportradar match integration is disabled',
+      error: 'Match integration is disabled',
       cached: false,
       source: 'sportradar-matches',
     };
   }
-  
+
+  const today = new Date().toISOString().split('T')[0];
+
+  if (isFreeWebApiConfigured()) {
+    const result = await getEventSchedules(today, { ...config, fallbackToMock: false });
+    if (result.success && result.data) {
+      return { success: true, data: result.data, cached: false, source: 'freewebapi' };
+    }
+    if (config.fallbackToMock) {
+      return { success: true, data: getMockMatches(), cached: false, source: 'sportradar-matches-mock' };
+    }
+  }
+
   try {
-    // Get active tournaments
     const tournaments = await getATPTournaments();
-    const today = new Date().toISOString().split('T')[0];
-    
-    const activeTournaments = tournaments.filter(t => {
+    const activeTournaments = tournaments.filter((t) => {
       const start = new Date(t.start_date);
       const end = new Date(t.end_date);
       const todayDate = new Date(today);
       return start <= todayDate && end >= todayDate;
     });
-    
-    // Get matches for each active tournament
+
     const allMatches: Match[] = [];
-    
     for (const tournament of activeTournaments) {
       const result = await getTournamentMatches(tournament.id, config);
       if (result.success && result.data) {
-        // Filter for today's matches
-        const todayMatches = result.data.filter(match => {
+        const todayMatches = result.data.filter((match) => {
           const matchDate = new Date(match.scheduled_time).toISOString().split('T')[0];
           return matchDate === today;
         });
         allMatches.push(...todayMatches);
       }
     }
-    
+
     return {
       success: true,
       data: allMatches,
@@ -148,17 +155,9 @@ export async function getTodaysMatches(
       source: 'sportradar-matches',
     };
   } catch (error: any) {
-    console.error('Error fetching today\'s matches:', error);
-    
     if (config.fallbackToMock) {
-      return {
-        success: true,
-        data: getMockMatches(),
-        cached: false,
-        source: 'sportradar-matches-mock',
-      };
+      return { success: true, data: getMockMatches(), cached: false, source: 'sportradar-matches-mock' };
     }
-    
     return {
       success: false,
       data: null,

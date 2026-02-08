@@ -47,6 +47,8 @@ export interface Match {
     }>;
     current_set?: number;
   };
+  /** Raw score string from API (e.g. "6-4 6-3") for recaps when sets not parsed */
+  scoreText?: string;
   winner?: 'player1' | 'player2';
   duration?: number; // minutes
 }

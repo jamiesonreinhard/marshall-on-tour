@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createAdminSupabase } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
+import { postBlogToX } from '@/lib/social/x';
 
 /**
  * Publish a post
@@ -14,10 +15,10 @@ export async function POST(
     const { id } = await params;
     const supabase = createAdminSupabase();
     
-    // Get post to check if it exists and get slug
+    // Get post to check if it exists and get slug, title, excerpt, image (for X cross-post)
     const { data: post, error: fetchError } = await supabase
       .from('posts')
-      .select('slug, published')
+      .select('slug, published, title, excerpt, featured_image')
       .eq('id', id)
       .single();
     
@@ -54,7 +55,22 @@ export async function POST(
     if (post.slug) {
       revalidatePath(`/blog/${post.slug}`);
     }
-    
+
+    // Post to X (hook + link, same image or no image)
+    if (post.slug) {
+      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://marshallontour.com';
+      const blogUrl = `${baseUrl.replace(/\/$/, '')}/blog/${post.slug}`;
+      const xResult = await postBlogToX({
+        blogUrl,
+        title: post.title ?? '',
+        excerpt: post.excerpt ?? undefined,
+        imageUrl: post.featured_image ?? null,
+      });
+      if (!xResult.success) {
+        console.warn(`[Publish] X post skipped or failed: ${xResult.error}`);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Post published successfully',

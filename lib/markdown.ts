@@ -9,15 +9,31 @@ import { remark } from 'remark';
 import remarkHtml from 'remark-html';
 
 /**
+ * Replace shortcodes in markdown with placeholder HTML (for React/widget hydration or static fallback).
+ * Example: [[booking_grid city="Melbourne" count="6"]] -> <div class="shortcode booking-grid" data-city="Melbourne" data-count="6">...</div>
+ */
+function replaceShortcodes(markdown: string): string {
+  let out = markdown;
+  // [[booking_grid city="X" count="6"]] or [[booking_grid city=X count=6]]
+  out = out.replace(
+    /\[\[booking_grid\s+city=["']?([^"'\s\]]+)["']?\s+count=["']?(\d+)["']?\s*\]\]/gi,
+    (_, city: string, count: string) =>
+      `<div class="shortcode booking-grid" data-city="${city}" data-count="${count}">Booking options for ${city}</div>`
+  );
+  return out;
+}
+
+/**
  * Convert Markdown to HTML
  */
 export async function markdownToHtml(markdown: string): Promise<string> {
   try {
+    const withShortcodes = replaceShortcodes(markdown);
     const result = await remark()
       .use(remarkHtml, {
         sanitize: false, // Allow HTML in markdown (for affiliate links, etc.)
       })
-      .process(markdown);
+      .process(withShortcodes);
 
     let html = String(result);
     

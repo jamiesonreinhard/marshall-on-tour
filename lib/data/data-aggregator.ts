@@ -13,7 +13,8 @@ import { findMatchHighlights, findClassicMatches } from './integrations/youtube'
 import { getPlayerRankings, getPlayerProfile, getHeadToHead } from './integrations/player-data';
 import { getTournamentMatches, getTodaysMatches, isBigMatch } from './integrations/sportradar-matches';
 import { getGearItems, getGearItem } from './integrations/gear';
-import { getATPTournaments, getCurrentTournaments, getUpcomingTournaments } from './sportradar';
+import { getCurrentTournamentsFromDB, getUpcomingTournamentsFromDB } from './tournaments-from-db';
+import type { TournamentFromDB } from './tournaments-from-db';
 import { getMarshallState } from '@/lib/marshall/state';
 import type { 
   NewsItem, 
@@ -27,9 +28,9 @@ import type {
 } from './integrations/types';
 
 export interface AggregatedData {
-  // Tournament data
-  activeTournaments: Awaited<ReturnType<typeof getATPTournaments>>;
-  upcomingTournaments: Awaited<ReturnType<typeof getUpcomingTournaments>>;
+  // Tournament data (from atp_calendar)
+  activeTournaments: TournamentFromDB[];
+  upcomingTournaments: TournamentFromDB[];
   
   // Match data
   todaysMatches?: Match[];
@@ -66,9 +67,9 @@ export async function aggregateDataForContent(
   };
   
   try {
-    // 1. Tournament data
-    data.activeTournaments = await getCurrentTournaments();
-    data.upcomingTournaments = await getUpcomingTournaments();
+    // 1. Tournament data (from DB; no Sportradar)
+    data.activeTournaments = await getCurrentTournamentsFromDB();
+    data.upcomingTournaments = await getUpcomingTournamentsFromDB();
     
     // 2. Match data (if tournament specified)
     if (tournamentId) {

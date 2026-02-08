@@ -6,7 +6,7 @@
  */
 
 import { getImageStrategy, ImageStrategy } from './image-strategy';
-import { getStockImageForPost } from './stock-images';
+import { getStockImageForPost, triggerUnsplashDownload } from './stock-images';
 import { getImageProvider, ImageProviderInterface, ReplicateProvider, ImagenProvider, FalProvider } from './image-providers';
 import { uploadImageToStorage, ensureBucketExists } from '@/lib/storage/upload-image';
 
@@ -14,7 +14,7 @@ const BASE_IDENTITY_IMAGE = '/assets/base_identity.png';
 const MARSHALL_FACE_REFERENCE = process.env.MARSHALL_FACE_REFERENCE_URL || BASE_IDENTITY_IMAGE;
 
 export interface ImageGenerationContext {
-  postType: 'gear' | 'travel' | 'analysis' | 'lifestyle';
+  postType: 'gear' | 'travel' | 'analysis' | 'lifestyle' | 'blast-from-past';
   topic: string;
   tournament?: {
     name: string;
@@ -25,17 +25,20 @@ export interface ImageGenerationContext {
   isRecap?: boolean; // Flag for recap posts
 }
 
+/** When a stock (Unsplash) image is used, we return url + attribution for the post. */
+export type ImageResult = string | { url: string; attribution: string };
+
 /**
  * Generate image for blog post
- * 
+ *
  * Strategy:
  * - Use stock images for non-Marshall posts (recaps, previews, gear guides, player profiles)
  * - Use AI generation only when Marshall needs to appear
- * - This reduces costs and provides authentic photography where appropriate
+ * - For Unsplash: hotlink URL, trigger download when used, return attribution for "Photo by X on Unsplash"
  */
 export async function generatePostImage(
   context: ImageGenerationContext
-): Promise<string> {
+): Promise<ImageResult> {
   // LOG: Image generation context
   console.log('\n========== IMAGE GENERATION CONTEXT ==========');
   console.log(JSON.stringify(context, null, 2));
@@ -71,10 +74,17 @@ export async function generatePostImage(
     );
     
     if (stockImage) {
-      console.log(`[Image Generation] ✅ Using stock image: ${stockImage}`);
-      return stockImage;
+      if (stockImage.downloadLocation) {
+        triggerUnsplashDownload(stockImage.downloadLocation);
+      }
+      console.log(`[Image Generation] ✅ Using stock image: ${stockImage.url}`);
+      return { url: stockImage.url, attribution: stockImage.attribution };
     }
-    
+    // Player/analysis: stock only—never AI (avoids wrong face/gender)
+    if (strategy.useStockOnly) {
+      console.log(`[Image Generation] Stock-only strategy: no stock found, using fallback (no AI).`);
+      return getFallbackImage(context.postType);
+    }
     console.log(`[Image Generation] ⚠️ No stock image found, falling back to AI generation`);
   }
   

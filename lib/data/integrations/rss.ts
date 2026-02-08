@@ -13,21 +13,20 @@ const DEFAULT_CONFIG: DataSourceConfig = {
   fallbackToMock: true,
 };
 
-// RSS Feed URLs
+// RSS Feed URLs (env overrides supported: RSS_ESPN_TENNIS, RSS_BBC_TENNIS, RSS_TENNIS_COM)
 const RSS_FEEDS = [
   {
     name: 'ESPN Tennis',
-    url: 'https://www.espn.com/tennis/rss.xml',
+    url: process.env.RSS_ESPN_TENNIS || 'https://www.espn.com/espn/rss/tennis/news',
   },
   {
     name: 'BBC Sport Tennis',
-    url: 'https://feeds.bbci.co.uk/sport/tennis/rss.xml',
+    url: process.env.RSS_BBC_TENNIS || 'https://feeds.bbci.co.uk/sport/tennis/rss.xml',
   },
   {
     name: 'Tennis.com',
-    url: 'https://www.tennis.com/news/rss',
+    url: process.env.RSS_TENNIS_COM || 'https://www.tennis.com/news/rss',
   },
-  // Add more feeds as needed
 ];
 
 /**
@@ -49,11 +48,12 @@ function parseRSSFeed(xml: string, source: string): NewsItem[] {
     const imageMatch = itemXml.match(/<enclosure url="(.*?)"/) || itemXml.match(/<media:content url="(.*?)"/);
     
     if (titleMatch && linkMatch) {
+      const rawLink = linkMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/, '$1').trim();
       items.push({
         id: `${source}-${Date.now()}-${Math.random()}`,
         title: titleMatch[1].replace(/<!\[CDATA\[(.*?)\]\]>/, '$1').trim(),
         description: descriptionMatch?.[1]?.replace(/<!\[CDATA\[(.*?)\]\]>/, '$1').trim() || '',
-        url: linkMatch[1].trim(),
+        url: rawLink,
         published_at: pubDateMatch?.[1] ? new Date(pubDateMatch[1]).toISOString() : new Date().toISOString(),
         source,
         image_url: imageMatch?.[1],
@@ -97,7 +97,8 @@ function extractTags(text: string): string[] {
 export async function fetchTennisNews(
   config: DataSourceConfig = DEFAULT_CONFIG
 ): Promise<DataSourceResult<NewsItem[]>> {
-  if (!config.enabled) {
+  const merged = { ...DEFAULT_CONFIG, ...config };
+  if (!merged.enabled) {
     return {
       success: false,
       data: null,
@@ -114,7 +115,7 @@ export async function fetchTennisNews(
     for (const feed of RSS_FEEDS) {
       try {
         const response = await fetch(feed.url, {
-          next: { revalidate: config.cacheDuration || 3600 },
+          next: { revalidate: merged.cacheDuration ?? 3600 },
           headers: {
             'User-Agent': 'Marshall On Tour Bot 1.0',
           },
@@ -148,7 +149,7 @@ export async function fetchTennisNews(
   } catch (error: any) {
     console.error('Error fetching tennis news:', error);
     
-    if (config.fallbackToMock) {
+    if (merged.fallbackToMock) {
       return {
         success: true,
         data: getMockNews(),

@@ -13,3 +13,4 @@ export * from './player-data';
 export * from './sportradar-matches';
 export * from './gear';
 export * from './atp-scraper';
+export * from './freewebapi';

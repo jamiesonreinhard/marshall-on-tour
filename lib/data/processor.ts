@@ -5,7 +5,7 @@
  */
 
 import { createServerSupabase } from '@/lib/supabase/server';
-import { getUpcomingTournaments, getCurrentTournaments } from './sportradar';
+import { getUpcomingTournamentsFromDB, getCurrentTournamentsFromDB } from './tournaments-from-db';
 import { getRecentNews, getTennisNews } from './rss';
 
 export interface ContentOpportunity {
@@ -80,7 +80,7 @@ export async function findContentGaps(): Promise<ContentOpportunity[]> {
  * Find upcoming tournaments that need coverage
  */
 export async function findUpcomingTournamentOpportunities(): Promise<ContentOpportunity[]> {
-  const upcoming = await getUpcomingTournaments();
+  const upcoming = await getUpcomingTournamentsFromDB();
   const opportunities: ContentOpportunity[] = [];
 
   // Get tournaments in the next 7 days (high priority)
@@ -107,7 +107,7 @@ export async function findUpcomingTournamentOpportunities(): Promise<ContentOppo
  * Find current tournaments that need match analysis
  */
 export async function findCurrentTournamentOpportunities(): Promise<ContentOpportunity[]> {
-  const current = await getCurrentTournaments();
+  const current = await getCurrentTournamentsFromDB();
   const opportunities: ContentOpportunity[] = [];
 
   current.forEach((tournament) => {
@@ -197,7 +197,7 @@ export async function analyzeAffiliateOpportunities(): Promise<ContentOpportunit
   const opportunities: ContentOpportunity[] = [];
 
   // Check upcoming tournaments for travel guide opportunities
-  const upcoming = await getUpcomingTournaments();
+  const upcoming = await getUpcomingTournamentsFromDB();
   upcoming.slice(0, 3).forEach((tournament) => {
     opportunities.push({
       type: 'travel',

@@ -6,6 +6,7 @@
  */
 
 import { HandlerContext, HandlerData, HandlerResult } from './types';
+import { getMarshallState } from '@/lib/marshall/state';
 import { analyzeRecentPosts } from '@/lib/data/processor';
 import { findMatchHighlights, findClassicMatches } from '@/lib/data/integrations/youtube';
 import { getHistoricalPlayerData } from '@/lib/data/integrations/historical-players';
@@ -91,16 +92,24 @@ export async function handleNostalgiaPost(
         dataSources.push(`YouTube: ${videosResult.data.length} classic matches`);
       }
     }
+
+    // Marshall's current state
+    const marshallState = await getMarshallState();
+    if (marshallState) {
+      dataSources.push('Marshall state: current location & gear');
+    }
     
     // 5. Build context for Gemini
     const context: any = {
       type: 'lifestyle' as const, // Nostalgia posts are lifestyle category
       topic: opportunity.topic,
       recentPosts: recentPostsContext,
-      // Add Marshall's age context for nostalgia posts
       marshallAge: 33,
       marshallBirthYear: 1993,
     };
+    if (marshallState) {
+      context.marshallState = marshallState;
+    }
     
     // Add rich data
     if (richData.historicalPlayer) {

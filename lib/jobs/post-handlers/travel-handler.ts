@@ -7,9 +7,11 @@
 
 import { HandlerContext, HandlerData, HandlerResult } from './types';
 import { createAdminSupabase } from '@/lib/supabase/server';
+import { getMarshallState } from '@/lib/marshall/state';
 import { analyzeRecentPosts } from '@/lib/data/processor';
 import { getTournamentWeather } from '@/lib/data/integrations/weather';
 import { findPlacesNearby, geocodeLocation } from '@/lib/data/integrations/google-maps';
+import { getPlayerRankings } from '@/lib/data/integrations/player-data';
 
 export async function handleTravelPost(
   ctx: HandlerContext
@@ -25,8 +27,15 @@ export async function handleTravelPost(
       title: p.title,
       category: p.category,
     }));
-    
-    // 2. Get tournament data
+
+    // 2. Top players (for small mentions: "top seeds", "world number 2", etc.)
+    const rankingsResult = await getPlayerRankings();
+    if (rankingsResult.success && rankingsResult.data) {
+      richData.rankings = rankingsResult.data.slice(0, 15);
+      dataSources.push('Rankings: Top 15 (for player mentions)');
+    }
+
+    // 3. Get tournament data
     let tournament;
     
     if (opportunity.metadata?.tournament_id) {
@@ -95,6 +104,12 @@ export async function handleTravelPost(
         }
       }
     }
+
+    // Marshall's current state
+    const marshallState = await getMarshallState();
+    if (marshallState) {
+      dataSources.push('Marshall state: current location & gear');
+    }
     
     // 5. Build context for Gemini
     const context: any = {
@@ -102,7 +117,11 @@ export async function handleTravelPost(
       topic: opportunity.topic,
       tournament,
       recentPosts: recentPostsContext,
+      affiliateFeatured: true, // Tournament previews and travel guides get featured "Marshall's picks" / "Where to stay" in first 400 words
     };
+    if (marshallState) {
+      context.marshallState = marshallState;
+    }
     
     // Add rich data
     if (richData.weather) {
@@ -117,7 +136,10 @@ export async function handleTravelPost(
     if (richData.restaurants) {
       context.restaurants = richData.restaurants;
     }
-    
+    if (richData.rankings) {
+      context.rankings = richData.rankings;
+    }
+
     return {
       success: true,
       data: {

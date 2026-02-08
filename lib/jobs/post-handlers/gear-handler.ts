@@ -7,6 +7,7 @@
 
 import { HandlerContext, HandlerData, HandlerResult } from './types';
 import { createAdminSupabase } from '@/lib/supabase/server';
+import { getMarshallState } from '@/lib/marshall/state';
 import { analyzeRecentPosts } from '@/lib/data/processor';
 import { getGearItems } from '@/lib/data/integrations/gear';
 
@@ -55,6 +56,12 @@ export async function handleGearPost(
         console.warn(`[Gear Handler] No gear data found for type: ${gearType}`);
       }
     }
+
+    // Marshall's current state (current racket, location)
+    const marshallState = await getMarshallState();
+    if (marshallState) {
+      dataSources.push('Marshall state: current location & gear');
+    }
     
     // 4. Build context for Gemini
     const context: any = {
@@ -63,6 +70,9 @@ export async function handleGearPost(
       recentPosts: recentPostsContext,
       gearData: richData.gearItems || undefined,
     };
+    if (marshallState) {
+      context.marshallState = marshallState;
+    }
     
     return {
       success: true,

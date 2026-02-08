@@ -227,6 +227,16 @@ export default async function Home() {
                     About
                   </Link>
                 </li>
+                <li>
+                  <Link href="/terms" className="text-sm text-zinc-600 hover:text-zinc-900 transition-colors">
+                    Terms of Service
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/privacy" className="text-sm text-zinc-600 hover:text-zinc-900 transition-colors">
+                    Privacy Policy
+                  </Link>
+                </li>
               </ul>
             </div>
             <div>
@@ -248,9 +258,11 @@ export default async function Home() {
           <div className="pt-8 border-t border-zinc-200">
             <p className="text-sm text-zinc-500 text-center">
               © 2026 Marshall. All rights reserved.{" "}
-              <Link href="/about" className="hover:text-zinc-700 underline">
-                AI Disclosure
-              </Link>
+              <Link href="/terms" className="hover:text-zinc-700 underline">Terms</Link>
+              {" · "}
+              <Link href="/privacy" className="hover:text-zinc-700 underline">Privacy</Link>
+              {" · "}
+              <Link href="/about" className="hover:text-zinc-700 underline">AI Disclosure</Link>
             </p>
           </div>
         </div>

@@ -215,9 +215,12 @@ export async function generatePostFromOpportunity(
     console.log(`[Post Generator] Gemini determined postType: ${geminiPostType}, mapped to contextType: ${contextType}`);
     
     // Generate image (strategy will auto-determine if Marshall should be included)
-    // Use the final contextType (which may have been updated by Gemini's postType)
+    // Blast-from-past must use tennis/nostalgia imagery, not lifestyle (no Marshall with coffee)
+    const imagePostType = (geminiPostType === 'blast-from-past' || opportunity.type === 'blast-from-past')
+      ? 'blast-from-past'
+      : contextType;
     const imageContext: any = {
-      postType: contextType, // Use the final contextType (may have been updated by Gemini)
+      postType: imagePostType,
       topic: opportunity.topic,
       tournament: context.tournament ? {
         name: context.tournament.name,
@@ -237,21 +240,26 @@ export async function generatePostFromOpportunity(
       console.log(`[Post Generator] Letting image strategy decide whether to include Marshall`);
     }
     
-    const imageUrl = await generatePostImage(imageContext);
-    
+    const imageResult = await generatePostImage(imageContext);
+    const imageUrl = typeof imageResult === 'object' ? imageResult.url : imageResult;
+    const imageAttribution = typeof imageResult === 'object' ? imageResult.attribution : null;
+    const contentForDb = imageAttribution
+      ? postContent.content.trimEnd() + '\n\n---\n\n*Featured image: ' + imageAttribution + '*'
+      : postContent.content;
+
     // Create slug from title
     const slug = postContent.title
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')
       .slice(0, 100);
-    
+
     // Build post data object
     const postData = {
       slug,
       title: postContent.title,
       excerpt: postContent.excerpt,
-      content: postContent.content,
+      content: contentForDb,
       category: dbCategory,
       featured_image: imageUrl,
       meta_title: postContent.metaTitle || postContent.title,

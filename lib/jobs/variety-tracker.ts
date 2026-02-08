@@ -171,6 +171,41 @@ export async function getContentHistory(days: number = 7): Promise<ContentHistor
 }
 
 /**
+ * Get the categories of the most recent N posts (published or drafts).
+ * Used to avoid posting the same type twice in a row — "act like a real person."
+ * Returns most recent first, e.g. ['travel', 'travel', 'analysis'].
+ */
+export async function getRecentPostCategories(count: number = 3): Promise<string[]> {
+  const supabase = createAdminSupabase();
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - 30); // Look back 30 days for recency
+
+  const { data: posts } = await supabase
+    .from('posts')
+    .select('published_at, created_at, category')
+    .or(`published_at.gte.${cutoffDate.toISOString()},and(published_at.is.null,created_at.gte.${cutoffDate.toISOString()})`)
+    .order('published_at', { ascending: false })
+    .order('created_at', { ascending: false })
+    .limit(Math.max(count, 10));
+
+  if (!posts || posts.length === 0) {
+    return [];
+  }
+
+  // Sort by "effective date" (published_at ?? created_at), newest first
+  const withDate = posts.map((p) => ({
+    category: (p.category || '').toLowerCase(),
+    date: new Date(p.published_at || p.created_at).getTime(),
+  }));
+  withDate.sort((a, b) => b.date - a.date);
+
+  return withDate
+    .slice(0, count)
+    .map((p) => p.category)
+    .filter(Boolean);
+}
+
+/**
  * Check if we've posted about a topic recently
  */
 export async function hasPostedAboutTopic(

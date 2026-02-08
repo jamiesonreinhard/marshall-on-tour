@@ -4,7 +4,8 @@
  * Ranks content opportunities to determine what Marshall should post about
  */
 
-import { getContentHistory, hasPostedAboutTopic, hasPostedInCategory } from './variety-tracker';
+import { getContentHistory, getRecentPostCategories, hasPostedAboutTopic, hasPostedInCategory } from './variety-tracker';
+import { getMarshallState } from '@/lib/marshall/state';
 
 export interface ContentOpportunity {
   id: string;
@@ -21,13 +22,45 @@ export interface ContentOpportunity {
 }
 
 /**
+ * Map opportunity to the category that would actually be saved in the DB.
+ * Tournament previews and "Marshall's Guide to X" save as Travel; recaps as Analysis.
+ */
+export function getOutputCategory(opportunity: { type: string; topic?: string }): string {
+  if (opportunity.type === 'gear') return 'gear';
+  if (opportunity.type === 'blast-from-past') return 'lifestyle';
+  if (opportunity.type === 'lifestyle') return 'travel';
+  if (opportunity.type === 'tournament') {
+    const t = (opportunity.topic || '').toLowerCase();
+    if (t.includes('preview')) return 'travel';
+    if (t.includes('guide')) return 'travel';
+    if (t.includes('recap')) return 'analysis';
+    if (t.includes('day update')) return 'analysis';
+    return 'analysis';
+  }
+  return 'analysis'; // player, match, news
+}
+
+/**
  * Score a content opportunity
  */
 export async function scoreOpportunity(
   opportunity: Omit<ContentOpportunity, 'totalScore' | 'contentVariety'>
 ): Promise<ContentOpportunity> {
+  // Output category (what would be saved in DB) — use for all variety checks
+  const outputCategory = getOutputCategory(opportunity);
+
   // Check content variety (penalize if we've posted about this recently)
   let contentVariety = 15; // Start with max points
+
+  // "Act like a real person": strong penalty if this would be the SAME type as the last post/draft
+  const recentCategories = await getRecentPostCategories(2);
+  if (recentCategories.length > 0 && outputCategory === recentCategories[0]) {
+    contentVariety -= 15; // Same type as most recent — max penalty so we pick something different
+    console.log(`[Scoring] Same-as-last-post penalty: last post was ${recentCategories[0]}, this would also be ${outputCategory} (-15 variety)`);
+  } else if (recentCategories.length > 1 && outputCategory === recentCategories[1]) {
+    contentVariety -= 7; // Same as 2nd-to-last — avoid three in a row
+    console.log(`[Scoring] Same-as-second-last penalty: would be ${outputCategory} again (-7 variety)`);
+  }
   
   // Check if we've posted about the exact topic recently
   if (await hasPostedAboutTopic(opportunity.topic, 3)) {
@@ -49,41 +82,91 @@ export async function scoreOpportunity(
     }
   }
   
-  // Penalize if we've posted in this category recently
-  const categoryMap: Record<string, string> = {
-    tournament: 'analysis',
-    match: 'analysis',
-    player: 'analysis',
-    gear: 'gear',
-    lifestyle: 'travel',
-    news: 'analysis',
-    'blast-from-past': 'lifestyle',
-  };
-  
-  const category = categoryMap[opportunity.type] || 'analysis';
-  
-  // Stronger penalties for travel/lifestyle (most repetitive category)
-  if (category === 'travel') {
-    if (await hasPostedInCategory(category, 4)) {
-      contentVariety -= 8; // Increased from 3 for travel
+  // Penalize if we've posted in this category recently (use output category for consistency)
+  if (outputCategory === 'travel') {
+    if (await hasPostedInCategory(outputCategory, 4)) {
+      contentVariety -= 8; // Travel is most repetitive
       console.log(`[Scoring] Travel category penalty: Posted travel content recently (-8 points)`);
-    } else if (await hasPostedInCategory(category, 7)) {
-      contentVariety -= 5; // Medium penalty for travel in last week
+    } else if (await hasPostedInCategory(outputCategory, 7)) {
+      contentVariety -= 5;
     }
   } else {
-    if (await hasPostedInCategory(category, 4)) {
-      contentVariety -= 5; // Increased from 3 for other categories
+    if (await hasPostedInCategory(outputCategory, 4)) {
+      contentVariety -= 5;
     }
   }
   
-  contentVariety = Math.max(0, contentVariety); // Don't go negative
-  
+  contentVariety = Math.max(0, contentVariety); // Don't go negative  
+
+  // Calendar-led bonus: prefer approved calendar entries when relevant
+  let calendarBonus = opportunity.metadata?.from_calendar === true ? 8 : 0;
+  const todayStr = new Date().toISOString().split('T')[0];
+  if (opportunity.metadata?.from_calendar === true && opportunity.metadata?.scheduled_date === todayStr) {
+    calendarBonus += 5; // Extra boost for "due today" so we stay timely
+    console.log(`[Scoring] Calendar due-today bonus: +5 (scheduled_date is today)`);
+  }
+  if (calendarBonus > 0 && !opportunity.metadata?.scheduled_date) {
+    console.log(`[Scoring] Calendar entry bonus: +${calendarBonus} (topic aligns with content calendar)`);
+  }
+
+  // Live-now bonus: real matches happening right now (real data = better content)
+  const liveNowBonus = (opportunity.metadata?.liveEventsCount as number) > 0 ? 5 : 0;
+  if (liveNowBonus > 0) {
+    console.log(`[Scoring] Live-now bonus: +5 (real live events)`);
+  }
+
+  // Marshall on-site bonus: prefer the tournament where he actually is
+  const marshallState = await getMarshallState();
+  const isMarshallHere = opportunity.metadata?.isMarshallHere === true ||
+    (opportunity.metadata?.tournament_id && marshallState?.current_tournament_id === opportunity.metadata.tournament_id);
+  const marshallHereBonus = isMarshallHere ? 10 : 0;
+  if (marshallHereBonus > 0) {
+    console.log(`[Scoring] Marshall on-site bonus: +10 (writing from current tournament)`);
+  }
+
+  // Region preference: European tournaments over elsewhere on date conflict; American swing exception
+  const EUROPEAN_COUNTRIES = new Set([
+    'Albania', 'Andorra', 'Armenia', 'Austria', 'Belarus', 'Belgium', 'Bosnia and Herzegovina',
+    'Bulgaria', 'Croatia', 'Cyprus', 'Czech Republic', 'Denmark', 'Estonia', 'Finland',
+    'France', 'Georgia', 'Germany', 'Greece', 'Hungary', 'Iceland', 'Ireland', 'Italy',
+    'Kazakhstan', 'Kosovo', 'Latvia', 'Liechtenstein', 'Lithuania', 'Luxembourg', 'Malta',
+    'Moldova', 'Monaco', 'Montenegro', 'Netherlands', 'North Macedonia', 'Norway', 'Poland',
+    'Portugal', 'Romania', 'Russia', 'San Marino', 'Serbia', 'Slovakia', 'Slovenia', 'Spain',
+    'Sweden', 'Switzerland', 'Turkey', 'Ukraine', 'United Kingdom', 'UK', 'Vatican City',
+  ]);
+  const country = (opportunity.metadata?.location as { country?: string } | undefined)?.country;
+  const isEuropean = country && EUROPEAN_COUNTRIES.has(country);
+  const isUSA = country && (country === 'United States' || country === 'USA' || country === 'US');
+  const now = new Date();
+  const month = now.getMonth() + 1; // 1–12
+  const americanSwing = month === 3 || month === 8 || month === 9; // March (IW/Miami), Aug–Sep (US Open)
+  let regionBonus = 0;
+  if (isEuropean && !americanSwing) {
+    regionBonus = 5;
+    console.log(`[Scoring] European tournament bonus: +5 (prefer Europe on date conflict)`);
+  } else if (isUSA && americanSwing) {
+    regionBonus = 3;
+    console.log(`[Scoring] American swing bonus: +3 (US tournament during US swing)`);
+  }
+
+  // Timely-news bonus: hot news (just happened / today) should compete with evergreen affiliate content
+  const timelyNewsBonus =
+    opportunity.type === 'news' && opportunity.timeliness >= 20 ? 12 : 0;
+  if (timelyNewsBonus > 0) {
+    console.log(`[Scoring] Timely-news bonus: +12 (story is very fresh)`);
+  }
+
   const totalScore =
     opportunity.timeliness +
     opportunity.affiliatePotential +
     opportunity.seoValue +
     contentVariety +
-    opportunity.socialEngagement;
+    opportunity.socialEngagement +
+    calendarBonus +
+    liveNowBonus +
+    marshallHereBonus +
+    regionBonus +
+    timelyNewsBonus;
   
   return {
     ...opportunity,
@@ -202,7 +285,7 @@ export function scoreSocialEngagement(
 }
 
 /**
- * Rank opportunities by score
+ * Rank opportunities by score. When scores are within 2 points, prefer variety (different type from last post).
  */
 export async function rankOpportunities(
   opportunities: Omit<ContentOpportunity, 'totalScore' | 'contentVariety'>[]
@@ -210,6 +293,19 @@ export async function rankOpportunities(
   const scored = await Promise.all(
     opportunities.map(opp => scoreOpportunity(opp))
   );
-  
-  return scored.sort((a, b) => b.totalScore - a.totalScore);
+  const recentCategories = await getRecentPostCategories(2);
+  const lastCategory = recentCategories[0];
+
+  return scored.sort((a, b) => {
+    const scoreDiff = b.totalScore - a.totalScore;
+    if (Math.abs(scoreDiff) > 2) return scoreDiff;
+    // Tie-breaker: prefer opportunity type different from last post (variety)
+    const categoryA = getOutputCategory(a);
+    const categoryB = getOutputCategory(b);
+    const aDifferent = lastCategory ? categoryA !== lastCategory : true;
+    const bDifferent = lastCategory ? categoryB !== lastCategory : true;
+    if (aDifferent && !bDifferent) return -1;
+    if (!aDifferent && bDifferent) return 1;
+    return scoreDiff;
+  });
 }

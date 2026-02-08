@@ -15,6 +15,8 @@ if (!GEMINI_API_KEY) {
   console.warn('GEMINI_API_KEY not set. Post generation will fail.');
 }
 
+import type { MarshallState } from '@/lib/marshall/state';
+
 export interface PostGenerationContext {
   type: 'gear' | 'travel' | 'analysis' | 'lifestyle';
   topic: string;
@@ -28,6 +30,7 @@ export interface PostGenerationContext {
     description: string;
     source: string;
   };
+  marshallState?: MarshallState | null;
   affiliateProducts?: string[];
   recentPosts?: Array<{
     title: string;
@@ -40,6 +43,14 @@ export interface PostGenerationContext {
     url: string;
     source: string;
     published_at: string;
+  }>;
+  /** Finished match results from FreeWebAPI (EventSchedules) for recap posts */
+  tournamentResults?: Array<{
+    round: string;
+    player1: { name: string };
+    player2: { name: string };
+    scoreText?: string;
+    status?: string;
   }>;
   gearData?: Array<{ // Real gear data from database for gear posts
     id: string;
@@ -55,6 +66,12 @@ export interface PostGenerationContext {
     cons?: string[];
     best_for?: string;
   }>;
+  /** When true, prompt requires featured "Marshall's picks" / "Where to stay" section in first 400 words with 2–3 AFF links. */
+  affiliateFeatured?: boolean;
+  /** Today's matches from API (for day updates / live posts). Use only this data. */
+  todayMatches?: Array<{ player1?: { name?: string }; player2?: { name?: string }; round?: string; scoreText?: string; tournament_name?: string }>;
+  /** Number of live events right now (for "live now" posts). */
+  liveEventsCount?: number;
 }
 
 /**
@@ -312,9 +329,21 @@ export async function generatePostContent(context: PostGenerationContext): Promi
  * Build the prompt for Gemini
  */
 function buildPrompt(context: PostGenerationContext): string {
-  const { type, topic, tournament, newsItem, affiliateProducts, recentPosts, isRecap, tournamentNews, gearData } = context;
+  const { type, topic, tournament, newsItem, affiliateProducts, recentPosts, isRecap, tournamentNews, tournamentResults, gearData, todayMatches, liveEventsCount } = context;
 
   let prompt = `You are Marshall, a 33-year-old tennis tour insider and travel blogger (born 1993). You've been following the ATP Tour for a decade, living out of a suitcase.
+
+MARSHALL'S PURPOSE (non-negotiable):
+- Marshall is a LIFESTYLE blogger whose lifestyle is driven by the ATP tour. He is NOT another analyst who mainly writes about results.
+- His job is to INSPIRE tennis fans: to travel, to experience tournaments in person, to see their favorite players live, to discover cities and cultures around the tour.
+- Results, weather, rankings, and real data are important—use them to be CREDIBLE and grounded. Weave them in so readers trust him. But the story is never "here are the results." The story is always experience, travel, why you should be there, what it feels like, who to watch and why they're worth your time.
+- Every post should be FUN, WITTY, and full of personality. Even recaps and "day updates" should leave readers wanting to book a trip or tune in—not just informed of scores.
+
+REAL DATA ONLY (avoids AI detection, builds trust):
+- Use ONLY the data provided below: matches, results, rankings, news, tournament info. Never invent scores, match outcomes, or statistics.
+- If we give you "tournament results" or "matches," cite them. If we don't, do not write as if the final has been played or make up winners.
+- Marshall's location, gear, and "where he is" are ONLY true when listed under MARSHALL'S CURRENT STATE. If that section is missing or empty, write in a neutral "insider" voice without claiming to be on-site.
+- Timely, specific details (dates, venues, player names from data) make the post feel real. Vague or generic claims feel like AI.
 
 CRITICAL AGE CONSISTENCY:
 - Marshall was born in 1993, so he is currently 33 years old
@@ -344,6 +373,33 @@ Write a blog post about: ${topic}
 POST TYPE: ${type}
 
 `;
+
+  // Marshall's current state (so content can reference where he is, what he uses, who he's watching)
+  const ms = (context as PostGenerationContext & { marshallState?: MarshallState | null }).marshallState;
+  if (ms) {
+    prompt += `MARSHALL'S CURRENT STATE (use naturally in the post—where he is, what he uses, who he's watching):\n`;
+    if (ms.current_city || ms.current_country) {
+      prompt += `- Location: ${[ms.current_city, ms.current_country].filter(Boolean).join(', ')}\n`;
+    }
+    if (ms.current_racket) prompt += `- Current racket: ${ms.current_racket}${ms.current_racket_affiliate_link ? ' (affiliate link available)' : ''}\n`;
+    if (ms.current_hotel) prompt += `- Hotel: ${ms.current_hotel}${ms.current_hotel_affiliate_link ? ' (affiliate link available)' : ''}\n`;
+    if (ms.current_coffee_shop) prompt += `- Coffee spot: ${ms.current_coffee_shop}\n`;
+    if (ms.up_and_coming_player_watching) prompt += `- Player he's watching: ${ms.up_and_coming_player_watching}\n`;
+    if (ms.next_city || ms.next_country) {
+      prompt += `- Next stop: ${[ms.next_city, ms.next_country].filter(Boolean).join(', ')}\n`;
+    }
+    prompt += `\n`;
+  }
+
+  // Affiliate-first: featured "Marshall's picks" / "Where to stay" in first 400 words (tournament preview, lifestyle, travel)
+  const affiliateFeatured = (context as PostGenerationContext & { affiliateFeatured?: boolean }).affiliateFeatured;
+  if (type === 'travel' || type === 'lifestyle' || affiliateFeatured) {
+    prompt += `AFFILIATE-FEATURED POST (tournament preview / travel / lifestyle):\n`;
+    prompt += `- Include a clear "Marshall's Picks" or "Where to Stay" (or "What I'm Using") section within the FIRST 400 words of the post.\n`;
+    prompt += `- Put 2–3 affiliate links in that section using [AFF:Product or Place Name] format. Do not bury affiliate products only in long paragraphs later.\n`;
+    prompt += `- Keep the post scannable: short paragraphs, subheadings. Total length around 500–800 words for previews/travel so links stay visible.\n`;
+    prompt += `- Optional: you may include exactly one shortcode after the intro paragraph for a booking grid: [[booking_grid city=CITY count=6]] where CITY is the tournament/location city.\n\n`;
+  }
 
   // Add gear data if this is a gear post
   if (type === 'gear' && gearData && gearData.length > 0) {
@@ -375,6 +431,7 @@ POST TYPE: ${type}
     });
     
     prompt += `INSTRUCTIONS FOR GEAR POSTS:\n`;
+    prompt += `- Put a featured "Top Picks" or "What to Buy" section NEAR THE TOP of the post (within the first 400 words) with 2–3 [AFF:Product Name] links.\n`;
     prompt += `- Use the gear data above to write an ACCURATE comparison guide\n`;
     prompt += `- Include all the products listed above in your guide\n`;
     prompt += `- Use the specifications, pros, cons, and "best for" information provided\n`;
@@ -395,6 +452,23 @@ POST TYPE: ${type}
     prompt += `- If you mention specific products, note that readers should verify current specs/pricing\n\n`;
   }
 
+  // Today's matches / live now (real data for day updates)
+  if (todayMatches && todayMatches.length > 0) {
+    prompt += `TODAY'S MATCHES (use only this real data—do not invent):\n`;
+    todayMatches.slice(0, 25).forEach((m: any, idx: number) => {
+      const p1 = m.player1?.name ?? 'Player 1';
+      const p2 = m.player2?.name ?? 'Player 2';
+      const round = m.round ?? '?';
+      const score = m.scoreText ? ` ${m.scoreText}` : '';
+      const tn = m.tournament_name ? ` [${m.tournament_name}]` : '';
+      prompt += `${idx + 1}. ${round}: ${p1} vs ${p2}${score}${tn}\n`;
+    });
+    prompt += `- Use these for credibility and specificity. The post should feel like "here's what's in the air today" or "why you should be watching"—not a dry schedule.\n\n`;
+  }
+  if (typeof liveEventsCount === 'number' && liveEventsCount > 0) {
+    prompt += `LIVE NOW: ${liveEventsCount} match(es) are in progress. You can reference "live action" or "as we speak" only because we have real live data.\n\n`;
+  }
+
   if (tournament) {
     prompt += `TOURNAMENT CONTEXT:
 - Name: ${tournament.name}
@@ -404,7 +478,7 @@ POST TYPE: ${type}
 
 `;
     
-    // CRITICAL: If this is a recap post, use real news data from RSS feeds
+    // CRITICAL: If this is a recap post, use real data (news or API results)
     if (isRecap) {
       if (tournamentNews && tournamentNews.length > 0) {
         prompt += `✅ TOURNAMENT RECAP - REAL NEWS DATA AVAILABLE ✅
@@ -430,10 +504,37 @@ INSTRUCTIONS:
 - If the news doesn't have specific details (like exact scores), you can say "in straight sets" or "in a thrilling match" without making up numbers
 
 `;
+      } else if (tournamentResults && tournamentResults.length > 0) {
+        prompt += `✅ TOURNAMENT RECAP - REAL RESULTS DATA (FreeWebAPI) ✅
+
+You have REAL finished match results for ${tournament.name}. Use this information to write an accurate recap with actual results.
+
+FINISHED MATCHES (round, players, score):
+${tournamentResults.map((m, idx) => {
+          const p1 = m.player1?.name ?? 'Player 1';
+          const p2 = m.player2?.name ?? 'Player 2';
+          const score = m.scoreText ? ` ${m.scoreText}` : '';
+          return `${idx + 1}. ${m.round}: ${p1} vs ${p2}${score}`;
+        }).join('\n')}
+
+INSTRUCTIONS:
+- Use the match results above to write an ACCURATE recap of ${tournament.name}
+- Mention the final result (winner and score if shown), semifinals, and other key results
+- Do NOT invent results that are not in the list above
+- Write in Marshall's voice - add analysis and context around the results
+- You MAY say the tournament "wrapped up" or "concluded" because we have real finished matches
+- Marshall's angle: results make it credible, but the takeaway should be experience, atmosphere, why it mattered to be there (or why to go next year)—not a dry results report
+
+`;
       } else {
         prompt += `⚠️ TOURNAMENT RECAP - NO NEWS DATA AVAILABLE ⚠️
 
-We attempted to fetch news about ${tournament.name} but no relevant articles were found.
+We attempted to fetch news about ${tournament.name} but no relevant articles were found. We have NO confirmation that the final has been played or who won.
+
+CRITICAL - DO NOT IMPLY THE TOURNAMENT HAS ENDED:
+- Do NOT say the tournament has "wrapped up", "just concluded", "is in the books", or "another [tournament] is in the books"
+- Do NOT write as if the final has already been played
+- Instead write as if the tournament may still be in progress or the final is ahead: e.g. "as we head into the final weekend", "with the final ahead", "as the tournament builds toward the climax"
 
 DO NOT INVENT OR MAKE UP:
 - Match results (who won, scores, sets)
@@ -443,31 +544,28 @@ DO NOT INVENT OR MAKE UP:
 - Tournament winners or champions
 
 INSTEAD, WRITE ABOUT:
-- The overall tournament experience and atmosphere
+- The overall tournament experience and atmosphere so far
 - General observations about the level of play
 - The tournament's significance in the tennis calendar
 - What makes this tournament special (location, history, court conditions)
-- The tournament's impact on the season
 - Travel and lifestyle aspects of the location
 - Your personal reflections on being at the tournament
+- What to expect as the tournament reaches its conclusion (without claiming it has concluded)
 
-WRITING STYLE FOR RECAPS WITHOUT DATA:
-- Use phrases like "the tournament delivered" or "another memorable edition"
-- Focus on the experience, atmosphere, and general observations
-- Write about what typically happens at this tournament
-- Discuss the tournament's place in tennis history
-- Share insights about the location, facilities, and overall vibe
-- If you must mention players, only mention them in general terms (e.g., "the top seeds", "favorites", "contenders") without claiming specific results
+WRITING STYLE WHEN WE HAVE NO RESULTS DATA:
+- Use "as the tournament builds toward the final weekend" not "the tournament wrapped up"
+- Use "another edition delivering" (present) not "another edition in the books" (past)
+- Focus on experience, atmosphere, and general observations—never imply specific results
 
 EXAMPLE OF WHAT TO AVOID:
+❌ "The Open Occitanie wrapped up, delivering another week of thrilling tennis"
+❌ "another Open Occitanie is in the books"
 ❌ "Carlos Alcaraz defeated Novak Djokovic in the final"
-❌ "The men's final was between Sinner and Alcaraz"
-❌ "Sabalenka won 6-4, 6-2"
 
 EXAMPLE OF WHAT TO WRITE INSTEAD:
-✓ "The tournament once again delivered high-quality tennis and memorable moments"
-✓ "The final weekend at Rod Laver Arena showcased the incredible depth of talent on tour"
-✓ "This tournament always brings out the best in players, and this year was no exception"
+✓ "As the Open Occitanie heads into its final weekend, the atmosphere in Montpellier has been electric"
+✓ "The tournament has once again delivered high-quality tennis; here's the vibe and what to expect"
+✓ "With the final ahead, here's what makes this stop on the calendar special"
 
 `;
       }
@@ -489,6 +587,47 @@ EXAMPLE OF WHAT TO WRITE INSTEAD:
 ${affiliateProducts.map(p => `- ${p}`).join('\n')}
 - Mention these products organically in the content
 - Use natural language, not salesy
+
+`;
+  }
+
+  // Player data: rankings, profiles, head-to-head (for analysis and small mentions everywhere)
+  const ctx = context as any;
+  if (ctx.rankings && Array.isArray(ctx.rankings) && ctx.rankings.length > 0) {
+    const list = ctx.rankings.slice(0, 20);
+    prompt += `CURRENT ATP RANKINGS (use for accuracy; you may mention names/ranks naturally in any post):
+${list.map((p: { name?: string; rank?: number; country?: string }) => `- #${p.rank ?? '?'} ${p.name ?? 'Unknown'} (${p.country ?? ''})`).join('\n')}
+
+- Marshall cares about the tour: you may reference current rankings, top players, or form in passing where it fits (e.g. "with the top seeds in town", "world number 2", "the current top 10").
+- For analysis/player posts, use this data as the source of truth. For travel/lifestyle/gear, optional small mentions only when natural.
+
+`;
+  }
+  if (ctx.players && Array.isArray(ctx.players) && ctx.players.length > 0) {
+    prompt += `PLAYER PROFILE DATA (use for this post):
+${ctx.players.map((p: { name?: string; rank?: number; country?: string; playing_style?: string }) => `- ${p.name ?? 'Unknown'} | Rank: ${p.rank ?? '?'} | Country: ${p.country ?? ''}${p.playing_style ? ` | Style: ${p.playing_style}` : ''}`).join('\n')}
+- For player/rising-star posts: use the data for credibility, but the angle is why they're worth watching, why fans should care, what makes them must-see—not a stat dump.
+
+`;
+  }
+  if (ctx.playerRankingStats && typeof ctx.playerRankingStats === 'object') {
+    const s = ctx.playerRankingStats as { previousRanking?: number; points?: number; bestRanking?: number };
+    const parts = [];
+    if (s.previousRanking != null) parts.push(`Previous rank: ${s.previousRanking}`);
+    if (s.points != null) parts.push(`Points: ${s.points}`);
+    if (s.bestRanking != null) parts.push(`Career-high rank: ${s.bestRanking}`);
+    if (parts.length) prompt += `RANKING MOVEMENT / FORM (use for rising-star posts): ${parts.join(' | ')}\n\n`;
+  }
+  if (ctx.headToHead && typeof ctx.headToHead === 'object') {
+    const h2h = ctx.headToHead as { player1Wins?: number; player2Wins?: number };
+    prompt += `HEAD-TO-HEAD (use when post involves two specific players): ${h2h.player1Wins ?? 0}-${h2h.player2Wins ?? 0} (player1-player2 wins).
+
+`;
+  }
+  if (ctx.matches && Array.isArray(ctx.matches) && ctx.matches.length > 0) {
+    const matches = ctx.matches.slice(0, 10);
+    prompt += `MATCH DATA (tournament/schedule):
+${matches.map((m: { player1?: { name?: string }; player2?: { name?: string }; round?: string; status?: string; scheduled_time?: string }) => `- ${m.player1?.name ?? 'TBD'} vs ${m.player2?.name ?? 'TBD'} (${m.round ?? '?'}) ${m.status ?? ''} ${m.scheduled_time ? new Date(m.scheduled_time).toLocaleString() : ''}`).join('\n')}
 
 `;
   }
@@ -556,6 +695,19 @@ ${videos.slice(0, 3).map((v: any, idx: number) => `${idx + 1}. ${v.title}\n   UR
     }
   }
 
+  // Videos for analysis/player posts (not only nostalgia) - readers expect video in sports content
+  const contextVideos = (context as any).videos;
+  if (contextVideos && Array.isArray(contextVideos) && contextVideos.length > 0) {
+    prompt += `YOUTUBE VIDEOS – YOU MUST INCLUDE THESE LINKS IN YOUR CONTENT:
+${contextVideos.slice(0, 5).map((v: any, idx: number) => `${idx + 1}. ${v.title}\n   URL: ${v.url}`).join('\n')}
+
+CRITICAL: Your content MUST contain at least 1–2 clickable YouTube links from the list above. If you do not include them, the post will be auto-corrected.
+- Add a "## Watch" or "### Must-watch highlights" section with markdown links, e.g.: [Video Title](url)
+- Or weave links inline, e.g.: "This [highlight reel](URL_FROM_LIST_ABOVE) shows..."
+- Use the exact URLs provided above. Sports readers expect video; do not omit.
+`;
+  }
+
   if (recentPosts && recentPosts.length > 0) {
     prompt += `RECENT POSTS (avoid repeating these topics):
 ${recentPosts.map(p => `- ${p.title} (${p.category})`).join('\n')}
@@ -617,6 +769,7 @@ IMPORTANT:
 - Do NOT wrap the JSON in markdown code blocks
 - CRITICAL: If approaching token limits, prioritize completing the JSON structure over adding more content
 - CRITICAL: Include proper \\n\\n spacing throughout the markdown content
+- When YouTube videos were provided above: INCLUDE 1-2 clickable links in the content (e.g. a "Watch" section or inline [text](url)). Sports readers expect video.
 - CRITICAL: Ensure the JSON is complete and valid - all strings must be properly closed with quotes
 - If you approach response length limits, ensure you close all JSON strings and the object properly
 - CRITICAL: Ensure the JSON is complete and valid - all strings must be properly closed with quotes

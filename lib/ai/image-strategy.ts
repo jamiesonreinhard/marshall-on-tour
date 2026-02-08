@@ -7,6 +7,8 @@
 
 export interface ImageStrategy {
   includeMarshall: boolean;
+  /** When true, use only stock/fallback—never AI (e.g. player/analysis to avoid wrong face/gender). */
+  useStockOnly?: boolean;
   imageType: 'marshall-portrait' | 'tournament-scene' | 'gear-showcase' | 'travel-location' | 'lifestyle-moment' | 'player-action' | 'abstract-tennis';
   sceneDescription: string;
   styleGuide: string;
@@ -17,35 +19,48 @@ export interface ImageStrategy {
  * Determine image strategy based on post context
  */
 export function getImageStrategy(
-  postType: 'gear' | 'travel' | 'analysis' | 'lifestyle',
+  postType: 'gear' | 'travel' | 'analysis' | 'lifestyle' | 'blast-from-past',
   topic: string,
   tournament?: { name: string; location: string },
   isRecap?: boolean
 ): ImageStrategy {
   const topicLower = topic.toLowerCase();
-  
-  // RECAP POSTS: Tournament-focused imagery, NOT Marshall's face
+
+  // BLAST FROM PAST / NOSTALGIA: Classic tennis imagery (player, match, stadium), NOT Marshall
+  if (postType === 'blast-from-past' || topicLower.includes('blast from past') || topicLower.includes('blast from the past') || topicLower.includes('nostalgia') || topicLower.includes('unforgettable') || topicLower.includes('throwback') || topicLower.includes('looking back')) {
+    return {
+      includeMarshall: false,
+      imageType: 'player-action',
+      sceneDescription: `Classic tennis moment. Professional tennis match or iconic player in action. Historic stadium atmosphere, crowd, or championship moment. Could be Australian Open, Wimbledon, Roland Garros, or US Open. Dynamic sports photography, nostalgic but high quality. Tennis court, player hitting ball or celebrating.`,
+      styleGuide: 'Classic sports photography, tennis history, iconic moment, stadium atmosphere, professional tennis. No person in casual street clothes - focus on tennis action or venue.',
+      consistencyNotes: 'Nostalgia posts should show tennis history - players, matches, or venues. Do not use Marshall in a lifestyle scene.',
+    };
+  }
+
+  // RECAP POSTS: Stock first (venue, stadium, action); no Marshall, no AI
   if (isRecap || topicLower.includes('recap') || topicLower.includes('final') || topicLower.includes('champions crowned')) {
     if (tournament) {
       return {
         includeMarshall: false,
+        useStockOnly: true,
         imageType: 'tournament-scene',
         sceneDescription: `Professional tennis tournament scene at ${tournament.location}. ${tournament.name} championship moment. Tennis court, stadium atmosphere, celebration. Action shot of tennis players, crowd in background, trophy ceremony. Dynamic, cinematic composition.`,
         styleGuide: 'Professional sports photography, high-energy, vibrant colors, dramatic lighting, wide-angle composition showing stadium atmosphere',
-        consistencyNotes: 'Tournament recaps should focus on the event, not Marshall. Use action shots, stadium views, or trophy moments.',
+        consistencyNotes: 'Tournament recaps should focus on the event, not Marshall. Use action shots, stadium views, or trophy moments. Stock first.',
       };
     }
   }
   
-  // PREVIEW POSTS: Tournament location/travel imagery
+  // PREVIEW / TRAVEL POSTS: Stock first (venue, city, stadium); no Marshall
   if (topicLower.includes('preview') || topicLower.includes('guide')) {
     if (tournament) {
       return {
         includeMarshall: false,
+        useStockOnly: true,
         imageType: 'travel-location',
         sceneDescription: `Beautiful ${tournament.location} cityscape or landmark. Tennis tournament venue in background. Travel destination photography. Luxury travel aesthetic, golden hour lighting, iconic location.`,
         styleGuide: 'Travel photography, destination-focused, architectural details, local culture, aspirational luxury travel',
-        consistencyNotes: 'Preview posts showcase the location, not Marshall. Focus on destination appeal.',
+        consistencyNotes: 'Preview posts showcase the location, not Marshall. Focus on destination appeal. Stock first.',
       };
     }
   }
@@ -73,14 +88,28 @@ export function getImageStrategy(
     }
   }
   
-  // PLAYER PROFILE POSTS: Player action shots, not Marshall
+  // ANALYSIS OR POST ABOUT A SPECIFIC (ATP) PLAYER: Stock only, no Marshall, men's tennis only (never AI—avoids wrong face/gender)
+  const atpPlayerNameInTopic = /\b(sinner|alcaraz|djokovic|nadal|federer|rune|fils|shelton|medvedev|zverev|tsitsipas|rublev|ruud|fritz)\b/.test(topicLower);
+  if (postType === 'analysis' && atpPlayerNameInTopic) {
+    return {
+      includeMarshall: false,
+      useStockOnly: true,
+      imageType: 'player-action',
+      sceneDescription: `Men's professional tennis, ATP. Male tennis player in action. Dynamic match photography, male player hitting forehand or backhand. Court action, stadium, dramatic lighting. Must be men's tennis, not women's.`,
+      styleGuide: 'Sports action photography, men\'s tennis only, ATP, male player, dynamic movement. Do not show women\'s tennis.',
+      consistencyNotes: 'Player/analysis posts about ATP players must use men\'s tennis imagery only. No Marshall, no WTA. Stock only.',
+    };
+  }
+
+  // PLAYER PROFILE POSTS: Stock only, player action shots, not Marshall (men's tennis for ATP blog)
   if (topicLower.includes('rising star') || topicLower.includes('player') || topicLower.includes('profile')) {
     return {
       includeMarshall: false,
+      useStockOnly: true,
       imageType: 'player-action',
-      sceneDescription: `Professional tennis player in action. Dynamic match photography. Player hitting forehand or backhand, intense focus, athletic movement. Court action, dramatic lighting.`,
-      styleGuide: 'Sports action photography, player-focused, dynamic movement, professional tennis photography style',
-      consistencyNotes: 'Player profiles should showcase the player, not Marshall. Use action shots or match photography.',
+      sceneDescription: `Men's professional tennis, ATP. Male tennis player in action. Dynamic match photography. Male player hitting forehand or backhand, intense focus. Court action, dramatic lighting. Not women's tennis.`,
+      styleGuide: 'Sports action photography, men\'s tennis only, ATP, player-focused, dynamic movement. Do not show women\'s tennis.',
+      consistencyNotes: 'Player profiles should showcase the player, not Marshall. Use men\'s tennis action shots only. Stock only.',
     };
   }
   

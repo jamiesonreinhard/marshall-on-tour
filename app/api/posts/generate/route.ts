@@ -253,7 +253,7 @@ export async function POST(request: NextRequest) {
 
     // Generate image
     console.log('Generating post image...');
-    const imageUrl = await generatePostImage({
+    const imageResult = await generatePostImage({
       postType: context.type,
       topic: context.topic,
       tournament: context.tournament ? {
@@ -262,6 +262,11 @@ export async function POST(request: NextRequest) {
       } : undefined,
       includeMarshall,
     });
+    const imageUrl = typeof imageResult === 'object' ? imageResult.url : imageResult;
+    const imageAttribution = typeof imageResult === 'object' ? imageResult.attribution : null;
+    const contentForDb = imageAttribution
+      ? postContent.content.trimEnd() + '\n\n---\n\n*Featured image: ' + imageAttribution + '*'
+      : postContent.content;
 
     // Create slug from title
     const slug = postContent.title
@@ -278,7 +283,7 @@ export async function POST(request: NextRequest) {
         slug,
         title: postContent.title,
         excerpt: postContent.excerpt,
-        content: postContent.content,
+        content: contentForDb,
         category: context.type.charAt(0).toUpperCase() + context.type.slice(1),
         featured_image: imageUrl,
         meta_title: postContent.metaTitle || postContent.title,

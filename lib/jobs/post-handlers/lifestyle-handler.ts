@@ -10,6 +10,7 @@ import { createAdminSupabase } from '@/lib/supabase/server';
 import { analyzeRecentPosts } from '@/lib/data/processor';
 import { getMarshallState } from '@/lib/marshall/state';
 import { getRecentNews } from '@/lib/data/integrations/rss';
+import { getPlayerRankings } from '@/lib/data/integrations/player-data';
 
 export async function handleLifestylePost(
   ctx: HandlerContext
@@ -32,7 +33,14 @@ export async function handleLifestylePost(
       richData.marshallState = marshallState;
       dataSources.push('Marshall state: current location & gear');
     }
-    
+
+    // 2b. Top players (for small mentions in lifestyle posts)
+    const rankingsResult = await getPlayerRankings();
+    if (rankingsResult.success && rankingsResult.data) {
+      richData.rankings = rankingsResult.data.slice(0, 15);
+      dataSources.push('Rankings: Top 15 (for player mentions)');
+    }
+
     // 3. Get tournament data if available
     let tournament;
     if (opportunity.metadata?.tournament_id) {
@@ -69,6 +77,7 @@ export async function handleLifestylePost(
       topic: opportunity.topic,
       tournament,
       recentPosts: recentPostsContext,
+      affiliateFeatured: true, // Lifestyle/travel guides get featured "Marshall's picks" in first 400 words
     };
     
     // Add rich data
@@ -78,7 +87,10 @@ export async function handleLifestylePost(
     if (richData.recentNews) {
       context.recentNews = richData.recentNews;
     }
-    
+    if (richData.rankings) {
+      context.rankings = richData.rankings;
+    }
+
     return {
       success: true,
       data: {

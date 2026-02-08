@@ -56,6 +56,14 @@ const jobs: Job[] = [
     schedule: 'Weekly (Sunday 12 AM UTC) or manual',
   },
   {
+    id: 'plan-week',
+    name: 'Plan Week',
+    description: 'Suggest content calendar entries from ATP calendar for the next 2 weeks (preview + recap per tournament). Entries are created with status = planned for review/approval.',
+    endpoint: '/api/jobs/plan-week',
+    method: 'POST',
+    schedule: 'Weekly or manual',
+  },
+  {
     id: 'generate-post',
     name: 'Generate Post (Manual)',
     description: 'Manually generate a post from the best available opportunity. Same as clicking "Generate Post" in queue.',

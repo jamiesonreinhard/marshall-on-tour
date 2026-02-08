@@ -20,16 +20,18 @@ export async function POST(request: NextRequest) {
 
     console.log('[Test Image Generation] Generating image with scene:', scene);
 
-    const imageUrl = await generatePostImage({
+    const imageResult = await generatePostImage({
       postType: postType as 'gear' | 'travel' | 'analysis' | 'lifestyle',
       topic,
       includeMarshall,
       scene, // Custom scene description
     });
+    const imageUrl = typeof imageResult === 'object' ? imageResult.url : imageResult;
 
     return NextResponse.json({
       success: true,
       imageUrl,
+      attribution: typeof imageResult === 'object' ? imageResult.attribution : undefined,
       scene,
     });
   } catch (error: any) {
