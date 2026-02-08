@@ -10,8 +10,8 @@ import { fetchTennisNews, getRecentNews } from '@/lib/data/integrations/rss';
 export async function GET() {
   try {
     const [allResult, recentResult] = await Promise.all([
-      fetchTennisNews({ fallbackToMock: false }),
-      getRecentNews(24, { fallbackToMock: false }),
+      fetchTennisNews({ enabled: true, fallbackToMock: false }),
+      getRecentNews(24, { enabled: true, fallbackToMock: false }),
     ]);
 
     const allCount = allResult.success && allResult.data ? allResult.data.length : 0;

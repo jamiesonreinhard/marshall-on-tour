@@ -136,7 +136,7 @@ export async function handleAnalysisPost(
       const resultsResult = await getTournamentResultsForRecap(
         tournament.name,
         tournament.endDate,
-        { fallbackToMock: false }
+        { enabled: true, fallbackToMock: false }
       );
       if (resultsResult.success && resultsResult.data && resultsResult.data.length > 0) {
         richData.tournamentResults = resultsResult.data;
