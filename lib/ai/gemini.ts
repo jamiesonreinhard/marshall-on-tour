@@ -72,6 +72,10 @@ export interface PostGenerationContext {
   todayMatches?: Array<{ player1?: { name?: string }; player2?: { name?: string }; round?: string; scoreText?: string; tournament_name?: string }>;
   /** Number of live events right now (for "live now" posts). */
   liveEventsCount?: number;
+  /** Scheduled matches for this tournament (FreeWebAPI) — for preview posts so Marshall knows who's playing. */
+  tournamentSchedule?: Array<{ round?: string; player1: { name: string }; player2: { name: string }; status?: string; scheduled_time?: string }>;
+  /** Unique list of player names in the draw (for preview posts). */
+  playersInDraw?: string[];
 }
 
 /**
@@ -329,7 +333,7 @@ export async function generatePostContent(context: PostGenerationContext): Promi
  * Build the prompt for Gemini
  */
 function buildPrompt(context: PostGenerationContext): string {
-  const { type, topic, tournament, newsItem, affiliateProducts, recentPosts, isRecap, tournamentNews, tournamentResults, gearData, todayMatches, liveEventsCount } = context;
+  const { type, topic, tournament, newsItem, affiliateProducts, recentPosts, isRecap, tournamentNews, tournamentResults, gearData, todayMatches, liveEventsCount, tournamentSchedule, playersInDraw } = context;
 
   let prompt = `You are Marshall, a 33-year-old tennis tour insider and travel blogger (born 1993). You've been following the ATP Tour for a decade, living out of a suitcase.
 
@@ -477,6 +481,25 @@ POST TYPE: ${type}
 - This is a ${type === 'travel' ? 'travel guide' : 'tournament preview/analysis'}
 
 `;
+    // Preview: who's playing and scheduled matches (FreeWebAPI)
+    if (!isRecap && (tournamentSchedule?.length || (playersInDraw && playersInDraw.length > 0))) {
+      if (playersInDraw && playersInDraw.length > 0) {
+        prompt += `WHO'S PLAYING AT ${tournament.name.toUpperCase()} (use this — real data from FreeWebAPI):
+${playersInDraw.slice(0, 50).map((p) => `- ${p}`).join('\n')}
+${playersInDraw.length > 50 ? `... and ${playersInDraw.length - 50} more in the draw.\n` : ''}
+
+`;
+      }
+      if (tournamentSchedule && tournamentSchedule.length > 0) {
+        prompt += `SCHEDULED MATCHES (round, players — use for "what to watch" and who's in the draw):
+${tournamentSchedule.slice(0, 25).map((m, i) => `${i + 1}. ${m.round ?? '?'}: ${m.player1?.name ?? 'TBD'} vs ${m.player2?.name ?? 'TBD'}`).join('\n')}
+${tournamentSchedule.length > 25 ? `... and ${tournamentSchedule.length - 25} more matches.\n` : ''}
+
+INSTRUCTIONS: Use the players and matches above to write an informed preview. Mention who's playing, top names, and what to watch. Do not make up players or matchups — only use this list.
+
+`;
+      }
+    }
     
     // CRITICAL: If this is a recap post, use real data (news or API results)
     if (isRecap) {

@@ -29,6 +29,18 @@ const BASE_URL = `https://${RAPIDAPI_HOST}`;
 const RANKINGS_PATH = '/api/tennis/rankings'; // + /atp or /wta
 const API_TENNIS = '/api/tennis';
 
+/** Known tournament ID + season ID for cup-trees (tennisapi1). Add more as needed. */
+const TOURNAMENT_API_IDS: Record<string, { tournamentId: number; seasonId: number }> = {
+  'abn amro open': { tournamentId: 2361, seasonId: 42300 },
+  rotterdam: { tournamentId: 2361, seasonId: 42300 },
+};
+export function getTournamentApiIds(tournamentName: string): { tournamentId: number; seasonId: number } | null {
+  const key = tournamentName.toLowerCase().trim();
+  if (TOURNAMENT_API_IDS[key]) return TOURNAMENT_API_IDS[key];
+  const found = Object.keys(TOURNAMENT_API_IDS).find((k) => key.includes(k) || k.includes(key));
+  return found ? TOURNAMENT_API_IDS[found] : null;
+}
+
 function getApiKey(): string | null {
   return process.env.RAPIDAPI_KEY || process.env.FREEWEBAPI_RAPIDAPI_KEY || null;
 }
@@ -465,6 +477,69 @@ export async function getEventSchedules(
 }
 
 /**
+ * Scheduled matches and players for a tournament (for preview posts).
+ * Fetches EventSchedules for start_date and the next 2 days; filters by tournament name.
+ * Returns matches (scheduled/not yet finished) and a unique list of player names so Marshall can say who's playing.
+ */
+export async function getTournamentScheduleForPreview(
+  tournamentName: string,
+  startDateStr: string,
+  config: DataSourceConfig = DEFAULT_CONFIG
+): Promise<
+  DataSourceResult<{
+    matches: Match[];
+    playersInDraw: string[];
+  }>
+> {
+  const c = mergeConfig(config);
+  if (!c.enabled || !tournamentName?.trim() || !startDateStr) {
+    return { success: false, data: null, error: 'Disabled or missing params', cached: false, source: 'freewebapi' };
+  }
+  const key = getApiKey();
+  if (!key) {
+    return { success: false, data: null, error: 'RAPIDAPI_KEY not set', cached: false, source: 'freewebapi' };
+  }
+
+  const normalizedName = tournamentName.toLowerCase().trim();
+  const days: string[] = [startDateStr];
+  for (let d = 1; d <= 2; d++) {
+    const next = new Date(startDateStr + 'T12:00:00Z');
+    next.setUTCDate(next.getUTCDate() + d);
+    days.push(next.toISOString().split('T')[0]);
+  }
+
+  const allMatches: Match[] = [];
+  const playerNames = new Set<string>();
+
+  for (const dateStr of days) {
+    const result = await getEventSchedules(dateStr, { ...c, fallbackToMock: false });
+    if (!result.success || !result.data) continue;
+    for (const m of result.data) {
+      const tName = (m.tournament_name ?? '').toLowerCase();
+      if (!tName.includes(normalizedName) && !normalizedName.includes(tName)) continue;
+      // Include scheduled and live; skip finished (preview is before/during early rounds)
+      if (m.status === 'finished') continue;
+      allMatches.push(m);
+      playerNames.add(m.player1.name.trim());
+      playerNames.add(m.player2.name.trim());
+    }
+  }
+
+  const roundOrder: Record<string, number> = { F: 1, SF: 2, QF: 3, R16: 4, R32: 5, R64: 6, R128: 7 };
+  allMatches.sort((a, b) => (roundOrder[a.round] ?? 99) - (roundOrder[b.round] ?? 99));
+
+  return {
+    success: true,
+    data: {
+      matches: allMatches,
+      playersInDraw: Array.from(playerNames).filter(Boolean).sort(),
+    },
+    cached: false,
+    source: 'freewebapi',
+  };
+}
+
+/**
  * Fetch finished match results for a tournament's final days (for recap posts).
  * Uses EventSchedules for end_date and the 2 days before; filters by tournament name and status finished/closed.
  * See: https://freewebapi.com/sports-apis/tennis-api/ (EventSchedules endpoint)
@@ -755,6 +830,98 @@ export async function getTournamentVenues(
   } catch (err: unknown) {
     return { success: false, data: null, error: err instanceof Error ? err.message : 'Request failed', cached: false, source: 'freewebapi' };
   }
+}
+
+/**
+ * Tournament draw / cup trees (bracket structure with matchups and players).
+ * Path: /api/tennis/tournament/{tournamentId}/season/{seasonId}/cup-trees
+ * Use this for previews when you have the API's tournamentId and seasonId (e.g. 2361, 42300 for ABN AMRO Rotterdam).
+ */
+export async function getTournamentCupTrees(
+  tournamentId: string | number,
+  seasonId: string | number,
+  config: DataSourceConfig = DEFAULT_CONFIG
+): Promise<DataSourceResult<unknown>> {
+  const c = mergeConfig(config);
+  if (!c.enabled) {
+    return { success: false, data: null, error: 'FreeWebAPI disabled', cached: false, source: 'freewebapi' };
+  }
+  if (!getApiKey()) {
+    return { success: false, data: null, error: 'RAPIDAPI_KEY not set', cached: false, source: 'freewebapi' };
+  }
+  try {
+    const url = `${BASE_URL}/api/tennis/tournament/${tournamentId}/season/${seasonId}/cup-trees`;
+    const res = await fetch(url, {
+      headers: getHeaders(),
+      next: { revalidate: c.cacheDuration ?? 900 },
+    });
+    if (!res.ok) {
+      return {
+        success: false,
+        data: null,
+        error: `${res.status} ${res.statusText}`,
+        cached: false,
+        source: 'freewebapi',
+      };
+    }
+    const json = await res.json().catch(() => null);
+    return { success: true, data: json, cached: false, source: 'freewebapi' };
+  } catch (err: unknown) {
+    return {
+      success: false,
+      data: null,
+      error: err instanceof Error ? err.message : 'Request failed',
+      cached: false,
+      source: 'freewebapi',
+    };
+  }
+}
+
+/**
+ * Extract player names and matchups from cup-trees response (shape may vary by API).
+ * Returns { playersInDraw: string[], matchups: string[] } for use in preview prompts.
+ */
+export function parseCupTreesForPreview(cupTrees: unknown): {
+  playersInDraw: string[];
+  matchups: string[];
+} {
+  const players = new Set<string>();
+  const matchups: string[] = [];
+  const addName = (n: unknown) => {
+    if (typeof n === 'string' && n.trim()) players.add(n.trim());
+    if (n && typeof n === 'object' && 'name' in n && typeof (n as { name: unknown }).name === 'string') {
+      players.add((n as { name: string }).name.trim());
+    }
+  };
+  const extract = (obj: unknown): void => {
+    if (!obj || typeof obj !== 'object') return;
+    const o = obj as Record<string, unknown>;
+    if (Array.isArray(obj)) {
+      obj.forEach(extract);
+      return;
+    }
+    if (o.home_team && typeof o.home_team === 'object') addName((o.home_team as { name?: string }).name);
+    if (o.away_team && typeof o.away_team === 'object') addName((o.away_team as { name?: string }).name);
+    if (o.competitors && Array.isArray(o.competitors)) {
+      o.competitors.forEach((c: unknown) => addName(typeof c === 'object' && c && 'name' in c ? (c as { name: string }).name : c));
+    }
+    if (o.player1 || o.player2) {
+      addName(o.player1);
+      addName(o.player2);
+      const p1 = typeof o.player1 === 'string' ? o.player1 : (o.player1 as { name?: string })?.name;
+      const p2 = typeof o.player2 === 'string' ? o.player2 : (o.player2 as { name?: string })?.name;
+      if (p1 && p2) matchups.push(`${p1} vs ${p2}`);
+    }
+    ['round', 'rounds', 'matches', 'nodes', 'children', 'tree', 'data'].forEach((key) => {
+      if (o[key] !== undefined) extract(o[key]);
+    });
+    Object.values(o).forEach(extract);
+  };
+  extract(cupTrees);
+  return {
+    playersInDraw: Array.from(players).filter(Boolean).sort(),
+    matchups: [...new Set(matchups)].filter(Boolean),
+  };
 }
 
 // --- Mock data (fallback when API key missing or request fails) ---

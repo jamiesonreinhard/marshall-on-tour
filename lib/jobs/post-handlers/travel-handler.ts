@@ -12,6 +12,12 @@ import { analyzeRecentPosts } from '@/lib/data/processor';
 import { getTournamentWeather } from '@/lib/data/integrations/weather';
 import { findPlacesNearby, geocodeLocation } from '@/lib/data/integrations/google-maps';
 import { getPlayerRankings } from '@/lib/data/integrations/player-data';
+import {
+  getTournamentScheduleForPreview,
+  getTournamentCupTrees,
+  parseCupTreesForPreview,
+  getTournamentApiIds,
+} from '@/lib/data/integrations/freewebapi';
 
 export async function handleTravelPost(
   ctx: HandlerContext
@@ -56,6 +62,50 @@ export async function handleTravelPost(
           startDate: tournamentData.start_date,
         };
         dataSources.push(`Tournament: ${tournamentData.name}`);
+
+        // Tournament preview: who's playing and draw (prefer cup-trees when we have API IDs, else EventSchedules)
+        const isPreview = opportunity.topic.toLowerCase().includes('preview');
+        if (isPreview && tournamentData.start_date) {
+          const apiIds = getTournamentApiIds(tournamentData.name);
+          if (apiIds) {
+            const cupResult = await getTournamentCupTrees(apiIds.tournamentId, apiIds.seasonId, {
+              enabled: true,
+              fallbackToMock: false,
+            });
+            if (cupResult.success && cupResult.data) {
+              const { playersInDraw: cupPlayers, matchups: cupMatchups } = parseCupTreesForPreview(cupResult.data);
+              if (cupPlayers.length > 0 || cupMatchups.length > 0) {
+                richData.playersInDraw = cupPlayers;
+                richData.cupTreeMatchups = cupMatchups;
+                if (cupPlayers.length > 0) dataSources.push(`Players in draw: ${cupPlayers.length} (FreeWebAPI cup-trees)`);
+                if (cupMatchups.length > 0) dataSources.push(`Draw matchups: ${cupMatchups.length} (FreeWebAPI cup-trees)`);
+              }
+            }
+          }
+          if (!richData.playersInDraw?.length) {
+            const scheduleResult = await getTournamentScheduleForPreview(
+              tournamentData.name,
+              tournamentData.start_date,
+              { enabled: true, fallbackToMock: false }
+            );
+            if (scheduleResult.success && scheduleResult.data) {
+              richData.tournamentSchedule = scheduleResult.data.matches;
+              richData.playersInDraw = scheduleResult.data.playersInDraw;
+              if (scheduleResult.data.matches.length > 0) {
+                dataSources.push(`Tournament schedule: ${scheduleResult.data.matches.length} matches (FreeWebAPI EventSchedules)`);
+              }
+              if (scheduleResult.data.playersInDraw.length > 0) {
+                dataSources.push(`Players in draw: ${scheduleResult.data.playersInDraw.length} (FreeWebAPI EventSchedules)`);
+              }
+            }
+          } else if (!richData.tournamentSchedule?.length && richData.cupTreeMatchups?.length) {
+            richData.tournamentSchedule = richData.cupTreeMatchups.map((m, i) => ({
+              round: 'Draw',
+              player1: { name: m.split(' vs ')[0]?.trim() ?? 'TBD' },
+              player2: { name: m.split(' vs ')[1]?.trim() ?? 'TBD' },
+            }));
+          }
+        }
         
         // 3. Get weather (only if we have both city and country)
         if (location.city && location.country) {
@@ -138,6 +188,12 @@ export async function handleTravelPost(
     }
     if (richData.rankings) {
       context.rankings = richData.rankings;
+    }
+    if (richData.tournamentSchedule && Array.isArray(richData.tournamentSchedule)) {
+      context.tournamentSchedule = richData.tournamentSchedule;
+    }
+    if (richData.playersInDraw && Array.isArray(richData.playersInDraw)) {
+      context.playersInDraw = richData.playersInDraw;
     }
 
     return {
