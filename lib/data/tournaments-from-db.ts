@@ -39,14 +39,20 @@ export async function getCurrentTournamentsFromDB(): Promise<TournamentFromDB[]>
     return [];
   }
 
-  return (data || []).map((row) => ({
-    id: row.id,
-    name: row.name,
-    start_date: row.start_date,
-    end_date: row.end_date,
-    location: (row.location as { city?: string; country?: string }) || { city: '', country: '' },
-    category: row.category ? { id: row.category, name: row.category } : undefined,
-  }));
+  return (data || []).map((row) => {
+    const loc = (row.location as { city?: string; country?: string } | null) ?? {};
+    return {
+      id: row.id,
+      name: row.name,
+      start_date: row.start_date,
+      end_date: row.end_date,
+      location: {
+        city: loc.city ?? '',
+        country: loc.country ?? '',
+      },
+      category: row.category ? { id: row.category, name: row.category } : undefined,
+    };
+  });
 }
 
 /**
@@ -69,12 +75,18 @@ export async function getUpcomingTournamentsFromDB(): Promise<TournamentFromDB[]
     return [];
   }
 
-  return (data || []).map((row) => ({
-    id: row.id,
-    name: row.name,
-    start_date: row.start_date,
-    end_date: row.end_date,
-    location: (row.location as { city?: string; country?: string }) || { city: '', country: '' },
-    category: row.category ? { id: row.category, name: row.category } : undefined,
-  }));
+  return (data || []).map((row) => {
+    const loc = (row.location as { city?: string; country?: string } | null) ?? {};
+    return {
+      id: row.id,
+      name: row.name,
+      start_date: row.start_date,
+      end_date: row.end_date,
+      location: {
+        city: loc.city ?? '',
+        country: loc.country ?? '',
+      },
+      category: row.category ? { id: row.category, name: row.category } : undefined,
+    };
+  });
 }
