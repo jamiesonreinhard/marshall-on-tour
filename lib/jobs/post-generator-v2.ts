@@ -33,6 +33,7 @@ import {
 } from './content-logger';
 import { checkContentQuality } from './content-quality';
 import { postBlogToX } from '@/lib/social/x';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
 export interface GeneratePostOptions {
   publish?: boolean;
@@ -257,10 +258,10 @@ export async function generatePostFromOpportunityV2(
 
     console.log(`[Post Generator V2] ✅ Post created: ${post.id} (${publish ? 'published' : 'draft'})`);
 
-    // When published, post to X (hook + link, same image or no image)
+    // When published, post to X (hook + link, same image or no image) — always use production URL, never localhost
     if (publish && post.slug) {
-      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://marshallontour.com';
-      const blogUrl = `${baseUrl.replace(/\/$/, '')}/blog/${post.slug}`;
+      const baseUrl = getCanonicalSiteUrl();
+      const blogUrl = `${baseUrl}/blog/${post.slug}`;
       const xResult = await postBlogToX({
         blogUrl,
         title: postContent.title,

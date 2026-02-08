@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createAdminSupabase } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { postBlogToX } from '@/lib/social/x';
+import { getCanonicalSiteUrl } from '@/lib/site-url';
 
 /**
  * Publish a post
@@ -56,10 +57,10 @@ export async function POST(
       revalidatePath(`/blog/${post.slug}`);
     }
 
-    // Post to X (hook + link, same image or no image)
+    // Post to X (hook + link, same image or no image) — always use production URL, never localhost
     if (post.slug) {
-      const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://marshallontour.com';
-      const blogUrl = `${baseUrl.replace(/\/$/, '')}/blog/${post.slug}`;
+      const baseUrl = getCanonicalSiteUrl();
+      const blogUrl = `${baseUrl}/blog/${post.slug}`;
       const xResult = await postBlogToX({
         blogUrl,
         title: post.title ?? '',
