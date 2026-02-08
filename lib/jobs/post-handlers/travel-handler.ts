@@ -99,7 +99,7 @@ export async function handleTravelPost(
               }
             }
           } else if (!richData.tournamentSchedule?.length && richData.cupTreeMatchups?.length) {
-            richData.tournamentSchedule = richData.cupTreeMatchups.map((m, i) => ({
+            richData.tournamentSchedule = richData.cupTreeMatchups.map((m: string) => ({
               round: 'Draw',
               player1: { name: m.split(' vs ')[0]?.trim() ?? 'TBD' },
               player2: { name: m.split(' vs ')[1]?.trim() ?? 'TBD' },
