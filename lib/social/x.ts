@@ -1,7 +1,8 @@
 /**
  * X (Twitter) API client for posting blog promotions.
- * Requires OAuth 1.0a user tokens (access token + secret) to create tweets and upload media.
- * @see https://docs.x.com/x-api/posts/create-post
+ * Supports both auth types from https://docs.x.com/x-api/posts/create-post:
+ * - OAuth 2.0 User Context (preferred): X_OAUTH2_USER_ACCESS_TOKEN (Bearer).
+ * - OAuth 1.0a User Context: X_CONSUMER_KEY, X_CONSUMER_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET.
  */
 
 import { TwitterApi, EUploadMimeType } from 'twitter-api-v2';
@@ -9,19 +10,25 @@ import { TwitterApi, EUploadMimeType } from 'twitter-api-v2';
 const MAX_TWEET_LENGTH = 280;
 
 function getXClient(): TwitterApi | null {
-  const appKey = process.env.X_CONSUMER_KEY;
-  const appSecret = process.env.X_CONSUMER_SECRET;
-  const accessToken = process.env.X_ACCESS_TOKEN;
-  const accessTokenSecret = process.env.X_ACCESS_TOKEN_SECRET;
-  if (!appKey || !appSecret || !accessToken || !accessTokenSecret) {
-    return null;
+  // OAuth 2.0 User Context (from "Connect X" flow) – preferred; X docs list it first
+  const oauth2UserToken = process.env.X_OAUTH2_USER_ACCESS_TOKEN?.trim();
+  if (oauth2UserToken) {
+    console.log('[X] Using OAuth 2.0 user token for posting');
+    return new TwitterApi(oauth2UserToken);
   }
-  return new TwitterApi({
-    appKey,
-    appSecret,
-    accessToken,
-    accessTokenSecret,
-  });
+
+  // OAuth 1.0a User Context (Keys and tokens → Access Token and Secret)
+  // Library expects "accessSecret", not "accessTokenSecret" (see twitter-api-v2 request-maker.mixin)
+  const appKey = process.env.X_CONSUMER_KEY?.trim();
+  const appSecret = process.env.X_CONSUMER_SECRET?.trim();
+  const accessToken = process.env.X_ACCESS_TOKEN?.trim();
+  const accessSecret = process.env.X_ACCESS_TOKEN_SECRET?.trim();
+  if (appKey && appSecret && accessToken && accessSecret) {
+    console.log('[X] Using OAuth 1.0a user context for posting');
+    return new TwitterApi({ appKey, appSecret, accessToken, accessSecret });
+  }
+
+  return null;
 }
 
 /**
@@ -62,11 +69,23 @@ export interface PostBlogToXResult {
  * Post a blog promotion to X: short hook + link, optionally with the post's featured image.
  * No-op if X user credentials are not configured; logs and returns success: false.
  */
+const X_403_HINT =
+  'OAuth 2.0: Use Admin → Connect X to get a user token. OAuth 1.0a: developer.x.com → your app → Settings → User authentication → set to Read and Write → regenerate Access Token and Secret.';
+
+function get403Hint(err: any): string {
+  const type = err?.data?.type ?? err?.data?.errors?.[0]?.type ?? '';
+  if (type.includes('oauth1-permissions'))
+    return 'In X Developer Portal: open your app → Settings → User authentication settings → App permissions → set to "Read and Write" (not Read only). Then regenerate your Access Token and Secret under Keys and tokens and update X_ACCESS_TOKEN and X_ACCESS_TOKEN_SECRET in .env.local.';
+  return X_403_HINT;
+}
+
 export async function postBlogToX(params: PostBlogToXParams): Promise<PostBlogToXResult> {
   const client = getXClient();
   if (!client) {
-    console.warn('[X] Skipping post to X: X_ACCESS_TOKEN and X_ACCESS_TOKEN_SECRET are required for posting. Set them in .env.local.');
-    return { success: false, error: 'X posting not configured (missing user tokens)' };
+    console.warn(
+      '[X] Skipping: set X_OAUTH2_USER_ACCESS_TOKEN (from Admin → Connect X) or all four OAuth 1.0a: X_CONSUMER_KEY, X_CONSUMER_SECRET, X_ACCESS_TOKEN, X_ACCESS_TOKEN_SECRET.'
+    );
+    return { success: false, error: 'X posting not configured (add OAuth 2.0 user token or OAuth 1.0a credentials)' };
   }
 
   const { blogUrl, title, excerpt, imageUrl } = params;
@@ -74,7 +93,7 @@ export async function postBlogToX(params: PostBlogToXParams): Promise<PostBlogTo
 
   try {
     let mediaIds: string[] | undefined;
-    if (imageUrl && imageUrl.trim()) {
+    if (imageUrl?.trim()) {
       try {
         const res = await fetch(imageUrl);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -86,8 +105,9 @@ export async function postBlogToX(params: PostBlogToXParams): Promise<PostBlogTo
         });
         mediaIds = [mediaId];
       } catch (uploadErr: any) {
-        const uploadMsg = formatXError(uploadErr);
-        console.warn('[X] Image upload failed, posting text-only:', uploadMsg);
+        logXError('[X] Image upload failed, posting text-only', uploadErr);
+        const upload403 = uploadErr?.code === 403 || String(uploadErr?.message ?? '').includes('403');
+        if (upload403) console.error(get403Hint(uploadErr));
       }
     }
 
@@ -103,12 +123,22 @@ export async function postBlogToX(params: PostBlogToXParams): Promise<PostBlogTo
     return { success: false, error: 'No tweet id in response' };
   } catch (err: any) {
     const message = formatXError(err);
-    console.error('[X] Failed to post:', message);
-    const hint =
-      (err?.code === 403 || (err?.message && String(err.message).includes('403')))
-        ? ' Fix: In X Developer Portal set your app to Read and Write, then regenerate Access Token and Secret.'
-        : '';
-    return { success: false, error: message + hint };
+    const is403 = err?.code === 403 || String(err?.message ?? '').includes('403');
+    const hint = is403 ? get403Hint(err) : '';
+    logXError('[X] Failed to post', err);
+    if (is403) console.error(hint);
+    return {
+      success: false,
+      error: message + (hint ? '. ' + hint : ''),
+    };
+  }
+}
+
+function logXError(prefix: string, err: any): void {
+  const msg = formatXError(err);
+  console.error(prefix + ':', msg);
+  if (err?.data && typeof err.data === 'object') {
+    console.error('[X] API response:', JSON.stringify(err.data));
   }
 }
 

@@ -16,6 +16,7 @@ const primaryNavItems = [
 
 // Secondary navigation items (in "More" dropdown)
 const secondaryNavItems = [
+  { href: "/admin/connect-x", label: "Connect X", icon: "𝕏" },
   { href: "/admin/marshall-state", label: "Marshall's State", icon: "👤" },
   { href: "/admin/marshall-face-upload", label: "Upload Face", icon: "🖼️" },
   { href: "/admin/board", label: "Project Board", icon: "📋" },
