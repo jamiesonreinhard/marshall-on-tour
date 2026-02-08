@@ -498,7 +498,7 @@ export async function getTournamentResultsForRecap(
     const result = await getEventSchedules(dateStr, { ...c, fallbackToMock: false });
     if (!result.success || !result.data) continue;
     for (const m of result.data) {
-      if (m.status !== 'finished' && m.status !== 'closed') continue;
+      if (m.status !== 'finished') continue;
       const tName = (m.tournament_name ?? '').toLowerCase();
       if (!tName.includes(normalizedName) && !normalizedName.includes(tName)) continue;
       const keyId = `${m.round}-${m.player1.name}-${m.player2.name}`;
