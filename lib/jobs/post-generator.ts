@@ -216,9 +216,7 @@ export async function generatePostFromOpportunity(
     
     // Generate image (strategy will auto-determine if Marshall should be included)
     // Blast-from-past must use tennis/nostalgia imagery, not lifestyle (no Marshall with coffee)
-    const imagePostType = (geminiPostType === 'blast-from-past' || opportunity.type === 'blast-from-past')
-      ? 'blast-from-past'
-      : contextType;
+    const imagePostType = opportunity.type === 'blast-from-past' ? 'blast-from-past' : contextType;
     const imageContext: any = {
       postType: imagePostType,
       topic: opportunity.topic,
