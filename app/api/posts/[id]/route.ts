@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { createAdminSupabase } from '@/lib/supabase/server';
 
 /**
@@ -115,25 +116,39 @@ export async function PATCH(
  * DELETE /api/posts/[id]
  */
 export async function DELETE(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
+    if (!id) {
+      return NextResponse.json({ error: 'Post ID required' }, { status: 400 });
+    }
     const supabase = createAdminSupabase();
-    
-    const { error } = await supabase
+
+    // .select() returns the deleted row(s) so we can confirm something was deleted
+    const { data: deleted, error } = await supabase
       .from('posts')
       .delete()
-      .eq('id', id);
-    
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
+
     if (error) {
       throw error;
     }
-    
-    return NextResponse.json({
-      success: true,
-    });
+    if (!deleted) {
+      return NextResponse.json(
+        { error: 'Post not found or already deleted' },
+        { status: 404 }
+      );
+    }
+
+    revalidatePath('/admin/posts');
+    revalidatePath('/admin/queue');
+    revalidatePath('/blog');
+
+    return NextResponse.json({ success: true }, { status: 200 });
   } catch (error: any) {
     console.error('Error deleting post:', error);
     return NextResponse.json(

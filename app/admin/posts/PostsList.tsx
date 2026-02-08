@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -23,6 +23,11 @@ export function PostsList({ posts: initialPosts }: PostsListProps) {
   const [posts, setPosts] = useState(initialPosts);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [postToDelete, setPostToDelete] = useState<Post | null>(null);
+
+  // Keep list in sync with server data (e.g. after delete on queue page, then navigate here)
+  useEffect(() => {
+    setPosts(initialPosts);
+  }, [initialPosts]);
 
   const handleDeleteClick = (post: Post) => {
     setPostToDelete(post);
